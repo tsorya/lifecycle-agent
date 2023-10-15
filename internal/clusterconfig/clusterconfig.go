@@ -33,20 +33,15 @@ const (
 	pullSecretFileName            = "pullsecret.json"
 )
 
-type UpdateConfigReconcilerOptions struct {
-	DataDir string `envconfig:"DATA_DIR" default:"/data"`
-}
-
 // UpgradeClusterConfigGather Gather ClusterConfig attributes from the kube-api
 type UpgradeClusterConfigGather struct {
 	client.Client
-	Log     logr.Logger
-	Scheme  *runtime.Scheme
-	Options *UpdateConfigReconcilerOptions
+	Log    logr.Logger
+	Scheme *runtime.Scheme
 }
 
 // FetchClusterConfig collect the current cluster config and write it as json files into data dir:
-func (r *UpgradeClusterConfigGather) FetchClusterConfig(ctx context.Context) error {
+func (r *UpgradeClusterConfigGather) FetchClusterConfig(ctx context.Context, ostreeDir string) error {
 	// TODO: Add the following
 	// ssh keys
 	// Other Machine configs?
@@ -83,7 +78,7 @@ func (r *UpgradeClusterConfigGather) FetchClusterConfig(ctx context.Context) err
 	if err != nil {
 		return err
 	}
-	if err = r.writeClusterConfig(clusterConfig, pullSecret, clusterID); err != nil {
+	if err = r.writeClusterConfig(clusterConfig, pullSecret, clusterID, ostreeDir); err != nil {
 		return err
 	}
 	return nil
@@ -114,8 +109,8 @@ func (r *UpgradeClusterConfigGather) generateClusterConfig(ingress *v1.Ingress, 
 }
 
 // configDirs returns the files directory for the given cluster config
-func (r *UpgradeClusterConfigGather) configDirs(config *cro.ClusterRelocation) (string, error) {
-	filesDir := filepath.Join(r.Options.DataDir, "namespaces", config.Namespace, config.Name, clusterConfigDir)
+func (r *UpgradeClusterConfigGather) configDirs(config *cro.ClusterRelocation, dir string) (string, error) {
+	filesDir := filepath.Join(dir, "namespaces", config.Namespace, config.Name, clusterConfigDir)
 	if err := os.MkdirAll(filesDir, 0700); err != nil {
 		return "", err
 	}
@@ -123,8 +118,9 @@ func (r *UpgradeClusterConfigGather) configDirs(config *cro.ClusterRelocation) (
 }
 
 // writeClusterConfig writes the required info based on the cluster config to the config cache dir
-func (r *UpgradeClusterConfigGather) writeClusterConfig(config *cro.ClusterRelocation, pullSecret *corev1.Secret, clusterID v1.ClusterID) error {
-	clusterConfigPath, err := r.configDirs(config)
+func (r *UpgradeClusterConfigGather) writeClusterConfig(config *cro.ClusterRelocation, pullSecret *corev1.Secret,
+	clusterID v1.ClusterID, dir string) error {
+	clusterConfigPath, err := r.configDirs(config, dir)
 	if err != nil {
 		return err
 	}

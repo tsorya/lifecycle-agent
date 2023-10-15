@@ -275,12 +275,11 @@ func TestClusterConfig(t *testing.T) {
 			}
 
 			ucc := UpgradeClusterConfigGather{
-				Client:  fakeClient,
-				Log:     logr.Discard(),
-				Scheme:  fakeClient.Scheme(),
-				Options: &UpdateConfigReconcilerOptions{DataDir: tmpDir},
+				Client: fakeClient,
+				Log:    logr.Discard(),
+				Scheme: fakeClient.Scheme(),
 			}
-			err = ucc.FetchClusterConfig(context.TODO())
+			err = ucc.FetchClusterConfig(context.TODO(), tmpDir)
 			if !tc.expectedErr && err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
