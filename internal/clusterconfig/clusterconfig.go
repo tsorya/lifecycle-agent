@@ -110,7 +110,7 @@ func (r *UpgradeClusterConfigGather) generateClusterConfig(ingress *v1.Ingress, 
 
 // configDirs returns the files directory for the given cluster config
 func (r *UpgradeClusterConfigGather) configDirs(config *cro.ClusterRelocation, dir string) (string, error) {
-	filesDir := filepath.Join(dir, "namespaces", config.Namespace, config.Name, clusterConfigDir)
+	filesDir := filepath.Join(dir, clusterConfigDir)
 	if err := os.MkdirAll(filesDir, 0700); err != nil {
 		return "", err
 	}

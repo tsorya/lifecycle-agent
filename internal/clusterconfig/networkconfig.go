@@ -19,7 +19,8 @@ type UpgradeNetworkConfigGather struct {
 var listOfPaths = []string{
 	"/etc/hostname",
 	"/etc/NetworkManager/system-connections",
-	"/var/lib/ovnk/iface_default_hint"}
+	"/var/lib/ovnk/iface_default_hint",
+	"/var/run/nodeip-configuration/primary-ip"}
 
 // FetchNetworkConfig gather network files and copy them
 func (r *UpgradeNetworkConfigGather) FetchNetworkConfig(ctx context.Context, ostreeDir string) error {
