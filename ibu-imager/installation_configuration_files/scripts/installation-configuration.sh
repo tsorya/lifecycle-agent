@@ -7,7 +7,6 @@ echo "Reconfiguring single node OpenShift"
 mkdir -p /opt/openshift
 cd /opt/openshift
 
-
 EXTRA_MANIFESTS_PATH=/opt/openshift/extra-manifests
 RELOCATION_CONFIG_PATH=/opt/openshift/cluster-configuration
 
@@ -26,14 +25,35 @@ echo "${RELOCATION_CONFIG_PATH} has been found"
 # Replace this with a function that loads values from yaml file
 set +o allexport
 
+
+
 # Recertify
 function recert {
+    NODE_IP=$(cat /etc/default/node-ip)
+    OLD_IP=$(cat /etc/default/seed-ip)
+
     ETCD_IMAGE="$(jq -r '.spec.containers[] | select(.name == "etcd") | .image' </etc/kubernetes/manifests/etcd-pod.yaml)"
     RECERT_IMAGE="quay.io/edge-infrastructure/recert:latest"
     local certs_dir=/var/opt/openshift/certs
     local recert_cmd="sudo podman run --name recert --network=host --privileged -v /var/opt/openshift:/var/opt/openshift -v /etc/kubernetes:/kubernetes -v /var/lib/kubelet:/kubelet -v /etc/machine-config-daemon:/machine-config-daemon ${RECERT_IMAGE} --etcd-endpoint localhost:2379 --static-dir /kubernetes --static-dir /kubelet --static-dir /machine-config-daemon --extend-expiration"
     sudo podman run --authfile=/var/lib/kubelet/config.json --name recert_etcd --detach --rm --network=host --privileged --entrypoint etcd -v /var/lib/etcd:/store ${ETCD_IMAGE} --name editor --data-dir /store
     sleep 10 # TODO: wait for etcd
+
+    # Recert node ip in order to support single ip
+    # remove this condition when we will support only single ip
+    if [[ -n "${NODE_IP}" ]]; then
+        recert_cmd="${recert_cmd} ""--cn-san-replace ${OLD_IP},${NODE_IP}"
+        if [[ ${NODE_IP} =~ .*:.* ]]; then
+          ETCD_NEW_IP="[${NODE_IP}]"
+        else
+          ETCD_NEW_IP=${NODE_IP}
+        fi
+
+        sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl member list | cut -d',' -f1 | xargs -i etcdctl member update "{}" --peer-urls=http://${ETCD_NEW_IP}:2380"
+        sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl del /kubernetes.io/configmaps/openshift-etcd/etcd-endpoints"
+        find /etc/kubernetes/ -type f -print0 | xargs -0 sed -i "s/${OLD_IP}/${NODE_IP}/g"
+    fi
+
     # Use previous cluster certs if directory is present
     if [[ -d $certs_dir ]]; then
         ingress_key=$(readlink -f $certs_dir/ingresskey-*)
@@ -47,6 +67,7 @@ function recert {
     else
         $recert_cmd
     fi
+
     # TODO: uncomment this once recert is stable
     # sudo podman rm recert
     sudo podman kill recert_etcd
@@ -62,7 +83,7 @@ fi
 
 # TODO check if we really need to stop kubelet
 echo "Starting kubelet"
-systemctl start kubelet
+systemctl enable kubelet --now
 
 #TODO: we need to add kubeconfig to the node for the configuration stage, this kubeconfig might not suffice
 export KUBECONFIG=/etc/kubernetes/static-pod-resources/kube-apiserver-certs/secrets/node-kubeconfigs/localhost.kubeconfig
@@ -102,7 +123,7 @@ if [[ "$(oc get nodes -ojsonpath='{.items[0].metadata.name}')" != "$(hostname)" 
     wait_approve_csr "kubelet-serving"
 
     echo "Deleting previous node..."
-    oc delete node "$(oc get nodes -ojsonpath='{.items[?(@.metadata.name != "'"$(hostname)"'"].metadata.name}')"
+    oc delete node "$(oc get nodes -ojsonpath='{.items[?(@.metadata.name != "'"$(hostname)"'")].metadata.name}')"
 fi
 
 verify_csr_subject() {
@@ -224,5 +245,4 @@ done
 echo "${KUBELET_SERVING_CERTIFICATE} is valid."
 
 rm -rf /opt/openshift
-systemctl enable kubelet
 systemctl disable installation-configuration.service
