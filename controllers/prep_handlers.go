@@ -99,9 +99,7 @@ func (r *ImageBasedUpgradeReconciler) launchSetupStateroot(
 	}
 	r.Log.Info("Handler script written")
 
-	cmd := fmt.Sprintf("%s --seed-image %s --progress-file %s --os-version %s --os-name %s",
-		scriptname, ibu.Spec.SeedImageRef.Image, progressfile,
-		ibu.Spec.SeedImageRef.Version, getOSName(ibu.Spec.SeedImageRef.Version))
+	cmd := fmt.Sprintf("%s --seed-image %s --progress-file %s", scriptname, ibu.Spec.SeedImageRef.Image, progressfile)
 	go utils.ExecuteChrootCmd(utils.Host, cmd)
 	result = requeueWithShortInterval()
 

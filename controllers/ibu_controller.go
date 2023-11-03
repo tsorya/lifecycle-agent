@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -360,8 +359,4 @@ func (r *ImageBasedUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
-}
-
-func getOSName(seedImageVersion string) string {
-	return fmt.Sprintf("rhcos_%s", seedImageVersion)
 }
