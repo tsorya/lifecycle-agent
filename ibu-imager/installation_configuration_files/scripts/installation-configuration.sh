@@ -29,22 +29,6 @@ NEW_CLUSTER_NAME=$(jq -r '.cluster_name' "${RELOCATION_CONFIG_PATH}"/clusterinfo
 NEW_CLUSTER_BASE_DOMAIN=$(jq -r '.domain' "${RELOCATION_CONFIG_PATH}"/clusterinfo/manifest.json)
 NEW_CLUSTER_FULL_DOMAIN="${NEW_CLUSTER_NAME}.${NEW_CLUSTER_BASE_DOMAIN}"
 
-function reconfigure_dnsmasq {
-    if [ -z $1 ]; then
-        echo "domain not defined"
-    else
-        echo "Updating dnsmasq with new domain"
-        # shellcheck disable=SC1009
-        cat << EOF > /etc/dnsmasq.d/customer-domain.conf
-address=/apps.$1/$2
-address=/api-int.$1/$2
-address=/api.$1/$2
-EOF
-        systemctl restart dnsmasq --no-block
-    fi
-}
-
-
 # Recertify
 function recert {
     NODE_IP=$(cat /etc/default/node-ip)
@@ -76,7 +60,6 @@ function recert {
         sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl member list | cut -d',' -f1 | xargs -i etcdctl member update "{}" --peer-urls=http://${ETCD_NEW_IP}:2380"
         sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl del /kubernetes.io/configmaps/openshift-etcd/etcd-endpoints"
         find /etc/kubernetes/ -type f -print0 | xargs -0 sed -i "s/${OLD_IP}/${NODE_IP}/g"
-        reconfigure_dnsmasq ${NEW_CLUSTER_FULL_DOMAIN} ${NODE_IP}
     fi
 
     # Use previous cluster certs if directory is present

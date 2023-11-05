@@ -61,6 +61,11 @@ fi
 if [[ -f "${NETWORK_CONFIG_PATH}"/primary-ip ]]; then
     cp "${NETWORK_CONFIG_PATH}"/primary-ip /etc/default/node-ip
 fi
+
+NEW_CLUSTER_NAME=$(jq -r '.cluster_name' "${RELOCATION_CONFIG_PATH}"/clusterinfo/manifest.json)
+NEW_CLUSTER_BASE_DOMAIN=$(jq -r '.domain' "${RELOCATION_CONFIG_PATH}"/clusterinfo/manifest.json)
+echo "${NEW_CLUSTER_NAME}.${NEW_CLUSTER_BASE_DOMAIN}" > /etc/default/cluster-domain
+
 systemctl restart NetworkManager
 
 systemctl disable prepare-installation-configuration.service
