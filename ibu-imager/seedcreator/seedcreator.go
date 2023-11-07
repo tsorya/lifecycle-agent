@@ -238,6 +238,7 @@ func (s *SeedCreator) backupVar() error {
 		"/var/lib/containers/*",
 		"/var/lib/kubelet/pods/*",
 		"/var/lib/cni/bin/*",
+		"/var/lib/ovn-ic/etc/ovnkube-node-certs/",
 	}
 
 	// Build the tar command
