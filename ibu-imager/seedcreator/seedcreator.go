@@ -115,6 +115,12 @@ func (s *SeedCreator) CreateSeedImage() error {
 
 func (s *SeedCreator) gatherClusterInfo(ctx context.Context) error {
 	// TODO: remove after removing usage of clusterversion.json
+	manifestPath := path.Join(s.backupDir, "manifest.json")
+	if _, err := os.Stat(manifestPath); err == nil {
+		s.log.Println("Manifest file was already created, skipping")
+		return nil
+	}
+
 	clusterVersion := &v1.ClusterVersion{}
 	if err := s.client.Get(ctx, types.NamespacedName{Name: "version"}, clusterVersion); err != nil {
 		return err
@@ -238,7 +244,7 @@ func (s *SeedCreator) backupVar() error {
 		"/var/lib/containers/*",
 		"/var/lib/kubelet/pods/*",
 		"/var/lib/cni/bin/*",
-		"/var/lib/ovn-ic/etc/ovnkube-node-certs/",
+		"/var/lib/ovn-ic/etc/ovnkube-node-certs/*",
 	}
 
 	// Build the tar command
@@ -283,8 +289,14 @@ func (s *SeedCreator) backupEtc() error {
 		return err
 	}
 
-	args = []string{"admin", "config-diff", "|", "awk", `'$1 != "D" {print "/etc/" $2}'`, "|", "xargs", "tar", "czf",
+	args = []string{"admin", "config-diff", "|", "grep", "-v", "'cni/multus'",
+		"|", "awk", `'$1 != "D" {print "/etc/" $2}'`, "|", "xargs", "tar", "czf",
 		path.Join(s.backupDir + "/etc.tgz"), "--selinux"}
+
+	//args = []string{"admin", "config-diff",
+	//	"|", "awk", `'$1 != "D" {print "/etc/" $2}'`, "|", "xargs", "tar", "czf",
+	//	path.Join(s.backupDir + "/etc.tgz"), "--selinux"}
+
 	_, err = s.ops.RunBashInHostNamespace("ostree", args...)
 	if err != nil {
 		return err

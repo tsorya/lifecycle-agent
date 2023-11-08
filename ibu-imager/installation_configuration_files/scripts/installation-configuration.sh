@@ -29,25 +29,13 @@ NEW_CLUSTER_NAME=$(jq -r '.cluster_name' "${RELOCATION_CONFIG_PATH}"/clusterinfo
 NEW_CLUSTER_BASE_DOMAIN=$(jq -r '.domain' "${RELOCATION_CONFIG_PATH}"/clusterinfo/manifest.json)
 NEW_CLUSTER_FULL_DOMAIN="${NEW_CLUSTER_NAME}.${NEW_CLUSTER_BASE_DOMAIN}"
 
-function reconfigure_dnsmasq {
-    if [ -z $1 ]; then
-        echo "domain not defined"
-    else
-        echo "Updating dnsmasq with new domain"
-        # shellcheck disable=SC1009
-        cat << EOF > /etc/dnsmasq.d/customer-domain.conf
-address=/apps.$1/$2
-address=/api-int.$1/$2
-address=/api.$1/$2
-EOF
-        systemctl restart dnsmasq --no-block
-    fi
-}
-
-
 # Recertify
 function recert {
-    NODE_IP=$(cat /etc/default/node-ip)
+
+    source /etc/default/sno_dnsmasq_configuration_overrides
+    NEW_CLUSTER_FULL_DOMAIN="${SNO_CLUSTER_NAME_OVERRIDE}.${SNO_BASE_DOMAIN_OVERRIDE}"
+
+    NODE_IP=${SNO_DNSMASQ_IP_OVERRIDE:-}
     OLD_IP=$(cat /etc/default/seed-ip)
 
     ETCD_IMAGE="$(jq -r '.spec.containers[] | select(.name == "etcd") | .image' </etc/kubernetes/manifests/etcd-pod.yaml)"
@@ -75,8 +63,11 @@ function recert {
 
         sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl member list | cut -d',' -f1 | xargs -i etcdctl member update "{}" --peer-urls=http://${ETCD_NEW_IP}:2380"
         sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl del /kubernetes.io/configmaps/openshift-etcd/etcd-endpoints"
+
+        # delete previous node
+        sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl del --prefix /kubernetes.io/minions"
+
         find /etc/kubernetes/ -type f -print0 | xargs -0 sed -i "s/${OLD_IP}/${NODE_IP}/g"
-        reconfigure_dnsmasq ${NEW_CLUSTER_FULL_DOMAIN} ${NODE_IP}
     fi
 
     # Use previous cluster certs if directory is present
@@ -118,11 +109,6 @@ function wait_for_api {
         echo "Waiting for api ..."
         sleep 5
     done
-    # Wait until the list of nodes has at least one
-    until oc get nodes -ojsonpath='{.items[0].metadata.name}' &> /dev/null; do
-        echo "Waiting for node ..."
-        sleep 5
-    done
     echo "api is available"
 }
 
@@ -132,7 +118,7 @@ wait_approve_csr() {
     local name=${1}
 
     echo "Waiting for ${name} CSR..."
-    until oc get csr | grep -i "${name}" | grep -i "pending" &> /dev/null; do
+    until oc get csr | grep -i "${name}" | grep -i "$(hostname)" | grep -i "pending" &> /dev/null; do
         echo "Waiting for ${name} CSR..."
         sleep 5
     done
@@ -142,14 +128,8 @@ wait_approve_csr() {
     oc get csr -o go-template='{{range .items}}{{if not .status}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs oc adm certificate approve
 }
 
-# if hostname has changed
-if [[ "$(oc get nodes -ojsonpath='{.items[0].metadata.name}')" != "$(hostname)" ]]; then
-    wait_approve_csr "kube-apiserver-client-kubelet"
-    wait_approve_csr "kubelet-serving"
-
-    echo "Deleting previous node..."
-    oc delete node "$(oc get nodes -ojsonpath='{.items[?(@.metadata.name != "'"$(hostname)"'")].metadata.name}')"
-fi
+wait_approve_csr "kube-apiserver-client-kubelet" $(hostname)
+wait_approve_csr "kubelet-serving" $(hostname)
 
 verify_csr_subject() {
     local csr=${1}
