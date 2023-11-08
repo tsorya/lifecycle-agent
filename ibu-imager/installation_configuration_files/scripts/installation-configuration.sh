@@ -118,7 +118,7 @@ wait_approve_csr() {
     local name=${1}
 
     echo "Waiting for ${name} CSR..."
-    until oc get csr | grep -i "${name}" | grep -i "$(hostname)" | grep -i "pending" &> /dev/null; do
+    until oc get csr | grep -i "${name}" | grep -i "pending" &> /dev/null; do
         echo "Waiting for ${name} CSR..."
         sleep 5
     done
@@ -128,8 +128,8 @@ wait_approve_csr() {
     oc get csr -o go-template='{{range .items}}{{if not .status}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs oc adm certificate approve
 }
 
-wait_approve_csr "kube-apiserver-client-kubelet" $(hostname)
-wait_approve_csr "kubelet-serving" $(hostname)
+wait_approve_csr "kube-apiserver-client-kubelet"
+wait_approve_csr "kubelet-serving"
 
 verify_csr_subject() {
     local csr=${1}
