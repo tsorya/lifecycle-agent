@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"log"
 	"os"
 	"os/exec"
@@ -244,7 +243,7 @@ func (s *SeedCreator) backupVar() error {
 		"/var/lib/containers/*",
 		"/var/lib/kubelet/pods/*",
 		"/var/lib/cni/bin/*",
-		"/var/lib/ovn-ic/etc/ovnkube-node-certs/*",
+		//"/var/lib/ovn-ic/etc/ovnkube-node-certs/*",
 	}
 
 	// Build the tar command
@@ -289,13 +288,13 @@ func (s *SeedCreator) backupEtc() error {
 		return err
 	}
 
-	args = []string{"admin", "config-diff", "|", "grep", "-v", "'cni/multus'",
-		"|", "awk", `'$1 != "D" {print "/etc/" $2}'`, "|", "xargs", "tar", "czf",
-		path.Join(s.backupDir + "/etc.tgz"), "--selinux"}
-
-	//args = []string{"admin", "config-diff",
+	//args = []string{"admin", "config-diff", "|", "grep", "-v", "'cni/multus'",
 	//	"|", "awk", `'$1 != "D" {print "/etc/" $2}'`, "|", "xargs", "tar", "czf",
 	//	path.Join(s.backupDir + "/etc.tgz"), "--selinux"}
+
+	args = []string{"admin", "config-diff",
+		"|", "awk", `'$1 != "D" {print "/etc/" $2}'`, "|", "xargs", "tar", "czf",
+		path.Join(s.backupDir + "/etc.tgz"), "--selinux"}
 
 	_, err = s.ops.RunBashInHostNamespace("ostree", args...)
 	if err != nil {
@@ -427,4 +426,22 @@ func (s *SeedCreator) renderInstallationEnvFile(recertContainerImage, seedFullDo
 	}
 
 	return utils.RenderTemplateFile(srcFile, substitutions, destFile, 0o644)
+}
+
+func (s *SeedCreator) cleanupNode(ctx context.Context) error {
+	nodesList := &v1.NodeList{}
+	err := s.client.List(context.TODO(), nodesList)
+	if err != nil {
+		return err
+	}
+	for _, node := range nodesList.Items {
+		err = s.client.Delete(ctx, &node)
+		if err != nil {
+			return err
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return nil
 }

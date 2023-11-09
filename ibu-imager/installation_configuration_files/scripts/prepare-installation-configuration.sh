@@ -79,11 +79,9 @@ EOF
 
 systemctl restart NetworkManager
 
-#cd /var/lib/kubelet && rm -rfv !\(config.json\)
-
 systemctl disable prepare-installation-configuration.service
-echo "Enabling kubelet"
-systemctl enable kubelet
+#echo "Enabling kubelet"
+#systemctl enable kubelet
 
 if [[ -n "${DEVICE}" ]]; then
     umount_config "${DEVICE}"

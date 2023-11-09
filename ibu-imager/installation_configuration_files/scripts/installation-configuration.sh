@@ -65,7 +65,7 @@ function recert {
         sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl del /kubernetes.io/configmaps/openshift-etcd/etcd-endpoints"
 
         # delete previous node
-        sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl del --prefix /kubernetes.io/minions"
+        #sudo podman exec -it recert_etcd bash -c "/usr/bin/etcdctl del --prefix /kubernetes.io/minions"
 
         find /etc/kubernetes/ -type f -print0 | xargs -0 sed -i "s/${OLD_IP}/${NODE_IP}/g"
     fi
@@ -99,6 +99,7 @@ fi
 
 # TODO check if we really need to stop kubelet
 echo "Starting kubelet"
+
 systemctl enable kubelet --now
 
 #TODO: we need to add kubeconfig to the node for the configuration stage, this kubeconfig might not suffice
@@ -109,6 +110,11 @@ function wait_for_api {
         echo "Waiting for api ..."
         sleep 5
     done
+#    # Wait until the list of nodes has at least one
+#    until oc get nodes -ojsonpath='{.items[0].metadata.name}' &> /dev/null; do
+#        echo "Waiting for node ..."
+#        sleep 5
+#    done
     echo "api is available"
 }
 
@@ -128,8 +134,14 @@ wait_approve_csr() {
     oc get csr -o go-template='{{range .items}}{{if not .status}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs oc adm certificate approve
 }
 
-wait_approve_csr "kube-apiserver-client-kubelet"
-wait_approve_csr "kubelet-serving"
+# if hostname has changed
+if [[ "$(oc get nodes -ojsonpath='{.items[0].metadata.name}')" != "$(hostname)" ]]; then
+    wait_approve_csr "kube-apiserver-client-kubelet"
+    wait_approve_csr "kubelet-serving"
+
+    echo "Deleting previous node..."
+    oc delete node "$(oc get nodes -ojsonpath='{.items[?(@.metadata.name != "'"$(hostname)"'")].metadata.name}')"
+fi
 
 verify_csr_subject() {
     local csr=${1}
