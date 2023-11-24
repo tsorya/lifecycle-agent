@@ -10,7 +10,10 @@ import (
 	"github.com/openshift-kni/lifecycle-agent/utils"
 )
 
-const RecertConfigFile = "recert_config.json"
+const (
+	RecertConfigFile = "recert_config.json"
+	SummaryFile      = "/var/tmp/recert-summary.yaml"
+)
 
 var staticDirs = []string{"/kubelet", "/kubernetes", "/machine-config-daemon"}
 
@@ -35,7 +38,7 @@ type RecertConfig struct {
 func CreateRecertConfigFile(clusterInfo, seedClusterInfo *clusterinfo.ClusterInfo, certsDir, recertConfigFolder string) error {
 	config := createBasicEmptyRecertConfig()
 	config.ClusterRename = fmt.Sprintf("%s:%s", clusterInfo.ClusterName, clusterInfo.Domain)
-	config.SummaryFile = "/var/tmp/recert-summary.yaml"
+	config.SummaryFile = SummaryFile
 	seedFullDomain := fmt.Sprintf("%s.%s", seedClusterInfo.ClusterName, seedClusterInfo.Domain)
 	clusterFullDomain := fmt.Sprintf("%s.%s", clusterInfo.ClusterName, clusterInfo.Domain)
 	config.ExtendExpiration = true
