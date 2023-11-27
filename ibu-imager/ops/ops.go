@@ -27,6 +27,8 @@ type Ops interface {
 	RunUnauthenticatedEtcdServer(authFile, name string) error
 	GetImageFromPodDefinition(etcdStaticPodFile, containerImage string) (string, error)
 	RunRecert(recertContainerImage, authFile, recertConfigFile string, additionalPodmanParams ...string) error
+	RunrecertFullFlow(log *logrus.Logger, authFile, recertContainerImage, configFile string,
+		additionalPreRecertOperations func() error, additionalPodmanParams ...string) error
 }
 
 type ops struct {
@@ -75,6 +77,9 @@ func (o *ops) GetImageFromPodDefinition(podFile, containerName string) (string, 
 	return "", fmt.Errorf("no '%s' container found or no image specified in %s", containerName, podFile)
 }
 
+// RunUnauthenticatedEtcdServer Run unauthenticated etcd server for the recert tool.
+// This runs a small (fake) unauthenticated etcd server backed by the actual etcd database,
+// which is required before running the recert tool.
 func (o *ops) RunUnauthenticatedEtcdServer(authFile, name string) error {
 	// Get etcdImage available for the current release, this is needed by recert to
 	// run an unauthenticated etcd server for running successfully.
@@ -154,6 +159,37 @@ func (o *ops) RunRecert(recertContainerImage, authFile, recertConfigFile string,
 	args = append(args, recertContainerImage)
 	if _, err := o.hostCommandsExecutor.Execute(command, args...); err != nil {
 		return fmt.Errorf("failed to run recert tool container: %w", err)
+	}
+
+	return nil
+}
+
+func (o *ops) RunrecertFullFlow(log *logrus.Logger, authFile, recertContainerImage, configFile string,
+	additionalPreRecertOperations func() error, additionalPodmanParams ...string) error {
+	if err := o.RunUnauthenticatedEtcdServer(authFile, common.EtcdContainerName); err != nil {
+		return fmt.Errorf("failed to run etcd, err: %w", err)
+	}
+
+	defer func() {
+		log.Info("Killing the unauthenticated etcd server")
+		if _, err := o.RunInHostNamespace("podman", "kill", common.EtcdContainerName); err != nil {
+			log.WithError(err).Errorf("failed to kill %s container.", common.EtcdContainerName)
+		}
+
+		if _, err := o.RunInHostNamespace("podman", "rm", common.EtcdContainerName); err != nil {
+			o.log.WithError(err).Errorf("failed to rm %s container.", common.EtcdContainerName)
+		}
+	}()
+
+	if additionalPreRecertOperations != nil {
+		if err := additionalPreRecertOperations(); err != nil {
+			return err
+		}
+	}
+
+	if err := o.RunRecert(recertContainerImage, authFile, configFile,
+		additionalPodmanParams...); err != nil {
+		return err
 	}
 
 	return nil

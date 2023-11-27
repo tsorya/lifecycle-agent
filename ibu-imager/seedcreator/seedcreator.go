@@ -287,9 +287,6 @@ func (s *SeedCreator) stopServices() error {
 func (s *SeedCreator) runRecertValidation() error {
 	s.log.Info("Running recert --force-expire tool and saving a summary without sensitive data.")
 
-	// Run unauthenticated etcd server for the recert tool.
-	// This runs a small (fake) unauthenticated etcd server backed by the actual etcd database,
-	// which is required before running the recert tool.
 	if err := s.ops.RunUnauthenticatedEtcdServer(s.authFile, common.EtcdContainerName); err != nil {
 		return err
 	}

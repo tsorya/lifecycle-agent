@@ -65,7 +65,7 @@ func (p *PostPivot) PostPivotConfiguration(ctx context.Context) error {
 		return fmt.Errorf("failed to get seed info from %s, err: %w", "", err)
 	}
 
-	if err := p.recert(clusterInfo, seedClusterInfo); err != nil {
+	if err := utils.RunOnce("recert", p.workingDir, p.log, p.recert(clusterInfo, seedClusterInfo)); err != nil {
 		return err
 	}
 
@@ -93,12 +93,6 @@ func (p *PostPivot) PostPivotConfiguration(ctx context.Context) error {
 }
 
 func (p *PostPivot) recert(clusterInfo, seedClusterInfo *clusterinfo.ClusterInfo) error {
-	doneFile := path.Join(p.workingDir, recertDone)
-	if _, err := os.Stat(doneFile); err == nil {
-		p.log.Infof("Found %s file, skippin recert", doneFile)
-		return nil
-	}
-
 	if _, err := os.Stat(recert.SummaryFile); err == nil {
 		return fmt.Errorf("found %s file, returning error, it means recert previously failed. "+
 			"In case you still want to rerun it please remove the file", recert.SummaryFile)
@@ -110,31 +104,11 @@ func (p *PostPivot) recert(clusterInfo, seedClusterInfo *clusterinfo.ClusterInfo
 		return err
 	}
 
-	if err := p.ops.RunUnauthenticatedEtcdServer(p.authFile, common.EtcdContainerName); err != nil {
-		return fmt.Errorf("failed to run etcd, err: %w", err)
+	additional := func() error {
+		return p.additionalCommands(clusterInfo, seedClusterInfo, common.EtcdContainerName)
 	}
-
-	defer func() {
-		p.log.Info("Killing the unauthenticated etcd server")
-		if _, err := p.ops.RunInHostNamespace("podman", "kill", common.EtcdContainerName); err != nil {
-			p.log.WithError(err).Errorf("failed to kill %s container.", common.EtcdContainerName)
-		}
-
-		if _, err := p.ops.RunInHostNamespace("podman", "rm", common.EtcdContainerName); err != nil {
-			p.log.WithError(err).Errorf("failed to rm %s container.", common.EtcdContainerName)
-		}
-	}()
-
-	if err := p.additionalCommands(clusterInfo, seedClusterInfo, common.EtcdContainerName); err != nil {
-		return err
-	}
-
-	if err := p.ops.RunRecert(p.recertContainerImage, p.authFile, path.Join(p.workingDir, recert.RecertConfigFile),
-		"-v", fmt.Sprintf("%s:%s", p.workingDir, p.workingDir)); err != nil {
-		return err
-	}
-
-	_, err := os.Create(doneFile)
+	err := p.ops.RunrecertFullFlow(p.log, p.authFile, p.recertContainerImage, path.Join(p.workingDir, recert.RecertConfigFile),
+		additional, "-v", fmt.Sprintf("%s:%s", p.workingDir, p.workingDir))
 	return err
 }
 
