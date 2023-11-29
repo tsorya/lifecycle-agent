@@ -442,6 +442,9 @@ func TestClusterConfig(t *testing.T) {
 				}
 				assert.Equal(t, caBundleCMName, caBundle.Name)
 				assert.Equal(t, caBundle.Data, map[string]string{"test": "data"})
+
+				_, err = os.Stat(filepath.Join(clusterConfigPath, filepath.Base(common.CABundleFilePath)))
+				assert.Nil(t, err)
 			},
 		},
 	}
@@ -466,6 +469,20 @@ func TestClusterConfig(t *testing.T) {
 				for _, icsp := range tc.icsps {
 					objs = append(objs, icsp)
 				}
+			}
+
+			if tc.caBundleCM != nil {
+				hostPath = tmpDir
+				dir := filepath.Join(tmpDir, filepath.Dir(common.CABundleFilePath))
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				newPath := filepath.Join(dir, filepath.Base(common.CABundleFilePath))
+				f, err := os.Create(newPath)
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				_ = f.Close()
 			}
 
 			fakeClient, err := getFakeClientFromObjects(objs...)

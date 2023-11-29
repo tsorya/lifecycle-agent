@@ -44,10 +44,12 @@ const (
 	clusterIDFileName = "cluster-id-override.json"
 
 	idmsFileName  = "image-digest-mirror-set.json"
-	icspsFileName = "image-content-policy-list.json"
+	icspsFileName = "image-content-source-policy-list.json"
 
-	caBundleCMName   = "user-ca-bundle"
-	caBundleFileName = caBundleCMName + ".json"
+	caBundleCMName            = "user-ca-bundle"
+	caBundleFileName          = caBundleCMName + ".json"
+	catalogueSourcesNamespace = "openshift-marketplace"
+	catalogueSourcesFileName  = "catalogue-sources-list.json"
 )
 
 var (
@@ -99,7 +101,7 @@ func (r *UpgradeClusterConfigGather) FetchClusterConfig(ctx context.Context, ost
 	if err := r.fetchMachineConfigs(ctx, manifestsDir); err != nil {
 		return err
 	}
-	if err := r.fetchCABundle(ctx, manifestsDir); err != nil {
+	if err := r.fetchCABundle(ctx, manifestsDir, clusterConfigPath); err != nil {
 		return err
 	}
 	if err := r.fetchICSPs(ctx, manifestsDir); err != nil {
@@ -360,7 +362,7 @@ func (r *UpgradeClusterConfigGather) fetchICSPs(ctx context.Context, manifestsDi
 	return nil
 }
 
-func (r *UpgradeClusterConfigGather) fetchCABundle(ctx context.Context, manifestsDir string) error {
+func (r *UpgradeClusterConfigGather) fetchCABundle(ctx context.Context, manifestsDir, clusterConfigPath string) error {
 	r.Log.Info("Fetching user ca bundle")
 	caBundle := &corev1.ConfigMap{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: caBundleCMName,
@@ -382,6 +384,14 @@ func (r *UpgradeClusterConfigGather) fetchCABundle(ctx context.Context, manifest
 	if err := utils.MarshalToFile(caBundle, filepath.Join(manifestsDir, caBundleFileName)); err != nil {
 		return fmt.Errorf("failed to write user ca bundle to %s, err: %w",
 			filepath.Join(manifestsDir, caBundleFileName), err)
+	}
+
+	// we should copy ca-bundle from snoa as without doing it we will fail to pull images
+	// workaround for https://issues.redhat.com/browse/OCPBUGS-24035
+	caBundleFilePath := filepath.Join(hostPath, common.CABundleFilePath)
+	r.Log.Info("Copying", "file", caBundleFilePath)
+	if err := utils.CopyFileIfExists(caBundleFilePath, filepath.Join(clusterConfigPath, filepath.Base(caBundleFilePath))); err != nil {
+		return fmt.Errorf("failed to copy ca-bundle file %s to %s, err %w", caBundleFilePath, clusterConfigPath, err)
 	}
 
 	return nil
