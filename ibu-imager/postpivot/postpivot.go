@@ -197,19 +197,13 @@ func (p *PostPivot) additionalCommands(ctx context.Context, clusterInfo, seedClu
 	if utils.IsIpv6(newEtcdIp) {
 		newEtcdIp = fmt.Sprintf("[%s]", newEtcdIp)
 	}
-	// TODO: move to etcd client?
-	_, err := p.ops.RunInHostNamespace("podman", "exec", "-it", etcdImage, "bash", "-c",
-		fmt.Sprintf("/usr/bin/etcdctl member list | cut -d',' -f1 | xargs -i etcdctl member update \"{}\" --peer-urls=http://%s:2380", newEtcdIp))
-	if err != nil {
-		return fmt.Errorf("failed to change etcd peer url, err: %w", err)
-	}
 
 	if err := p.etcdPostPivotOperations(ctx, clusterInfo); err != nil {
 		return fmt.Errorf("failed to run post pivot etcd operations, err: %w", err)
 	}
 
 	// changing seed ip to new ip in all static pod files
-	_, err = p.ops.RunInHostNamespace("bash", "-c",
+	_, err := p.ops.RunInHostNamespace("bash", "-c",
 		fmt.Sprintf("find /etc/kubernetes/ -type f -print0 | xargs -0 sed -i \"s/%s/%s/g\"",
 			seedClusterInfo.MasterIP, clusterInfo.MasterIP))
 	if err != nil {
@@ -339,9 +333,21 @@ func (p *PostPivot) deleteAllOldMirrorResources(ctx context.Context, client runt
 		return fmt.Errorf("failed to delete all idms %w", err)
 	}
 
-	catalogueSources := &operatorsv1alpha1.CatalogSource{}
-	if err := client.DeleteAllOf(ctx, catalogueSources); err != nil {
-		return fmt.Errorf("failed to delete all catalogueSources %w", err)
+	return p.deleteCatalogSources(ctx, client)
+}
+
+func (p *PostPivot) deleteCatalogSources(ctx context.Context, client runtimeclient.Client) error {
+	p.log.Info("Deleting default catalog sources")
+	catalogSources := &operatorsv1alpha1.CatalogSourceList{}
+	allNamespaces := runtimeclient.ListOptions{Namespace: metav1.NamespaceAll}
+	if err := client.List(ctx, catalogSources, &allNamespaces); err != nil {
+		return fmt.Errorf("failed to list all catalogueSources %w", err)
+	}
+
+	for _, catalogSource := range catalogSources.Items {
+		if err := client.Delete(ctx, &catalogSource); err != nil {
+			return fmt.Errorf("failed to delete all catalogueSources %w", err)
+		}
 	}
 
 	return nil
