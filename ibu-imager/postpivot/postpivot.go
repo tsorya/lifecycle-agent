@@ -2,9 +2,12 @@ package postpivot
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/types"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	v1 "github.com/openshift/api/config/v1"
@@ -350,5 +353,40 @@ func (p *PostPivot) deleteCatalogSources(ctx context.Context, client runtimeclie
 		}
 	}
 
+	return nil
+}
+
+func (p *PostPivot) changeRegistryInCSVDeployment(ctx context.Context, client runtimeclient.Client,
+	clusterInfoObj *clusterinfo.ClusterInfo) error {
+
+	cmClient := clusterinfo.NewClusterInfoClient(client)
+	csvD, err := cmClient.GetCSVDeployment(ctx)
+	if err != nil {
+		return err
+	}
+	oldImageSplitted := strings.Split(csvD.Spec.Template.Spec.Containers[0].Image, "/")
+	oldImageSplitted[0] = clusterInfoObj.ReleaseRegistry
+	newImage := strings.Join(oldImageSplitted, "")
+
+	var newArgs []string
+
+	for _, arg := range csvD.Spec.Template.Spec.Containers[0].Args {
+		if strings.HasPrefix(arg, "--release-image") {
+			arg = newImage
+		}
+		newArgs = append(newArgs, arg)
+	}
+
+	newArgsStr, err := json.Marshal(newArgs)
+	if err != nil {
+		return err
+	}
+	patch := []byte(fmt.Sprintf(`{"spec":{"template":{"spec": {"containers": [{"name": "%s", "image":"%s", args: %s}]}}}}`,
+		csvD.Spec.Template.Spec.Containers[0].Name, newImage, newArgsStr))
+
+	err = client.Patch(ctx, csvD, runtimeclient.RawPatch(types.StrategicMergePatchType, patch))
+	if err != nil {
+		return fmt.Errorf("failed to patch csv deployment, err: %w", err)
+	}
 	return nil
 }

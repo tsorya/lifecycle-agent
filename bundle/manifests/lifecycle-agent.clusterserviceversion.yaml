@@ -152,6 +152,14 @@ spec:
           verbs:
           - delete
         - apiGroups:
+          - apps
+          resources:
+          - deployments
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
           - batch
           resources:
           - jobs
