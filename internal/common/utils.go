@@ -19,16 +19,11 @@ package common
 import (
 	"context"
 	"fmt"
-
 	"path/filepath"
 	"time"
 
 	"github.com/go-logr/logr"
-
-	"github.com/openshift-kni/lifecycle-agent/controllers/utils"
 	cp "github.com/otiai10/copy"
-
-	"github.com/openshift-kni/lifecycle-agent/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
@@ -37,6 +32,8 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openshift-kni/lifecycle-agent/api/v1alpha1"
 )
 
 // GetConfigMap retrieves the configmap from cluster
@@ -70,7 +67,7 @@ func GetConfigMaps(ctx context.Context, c client.Client, configMaps []v1alpha1.C
 
 // PathOutsideChroot returns filepath with host fs
 func PathOutsideChroot(filename string) string {
-	return filepath.Join(utils.Host, filename)
+	return filepath.Join(Host, filename)
 }
 
 func CopyOutsideChroot(src, dest string) error {

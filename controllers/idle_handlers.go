@@ -112,7 +112,7 @@ func (r *ImageBasedUpgradeReconciler) handleFinalizeFailure(ctx context.Context,
 
 func cleanupIBUFiles() error {
 	if _, err := os.Stat(common.PathOutsideChroot(utils.IBUWorkspacePath)); err == nil {
-		if err := os.RemoveAll(filepath.Join(utils.Host, utils.IBUWorkspacePath)); err != nil {
+		if err := os.RemoveAll(filepath.Join(common.Host, utils.IBUWorkspacePath)); err != nil {
 			return fmt.Errorf("removing %s failed: %w", utils.IBUWorkspacePath, err)
 		}
 	}
