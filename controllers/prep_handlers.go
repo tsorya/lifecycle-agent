@@ -38,14 +38,14 @@ import (
 )
 
 func (r *ImageBasedUpgradeReconciler) launchGetSeedImage(
-	ctx context.Context, ibu *lcav1alpha1.ImageBasedUpgrade, imageListFile, progressfile string,
+	ctx context.Context, ibu *lcav1alpha1.ImageBasedUpgrade, progressfile string,
 ) (ctrl.Result, error) {
 	result := requeueImmediately()
 	if err := updateProgressFile(progressfile, "started-seed-image-pull"); err != nil {
 		r.Log.Error(err, "failed to update progress file")
 		return result, err
 	}
-	if err := r.getSeedImage(ctx, ibu, imageListFile); err != nil {
+	if err := r.getSeedImage(ctx, ibu); err != nil {
 		r.Log.Error(err, "failed to get seed image")
 		if err := updateProgressFile(progressfile, "Failed"); err != nil {
 			r.Log.Error(err, "failed to update progress file")
@@ -60,9 +60,7 @@ func (r *ImageBasedUpgradeReconciler) launchGetSeedImage(
 	return result, nil
 }
 
-func (r *ImageBasedUpgradeReconciler) getSeedImage(
-	ctx context.Context, ibu *lcav1alpha1.ImageBasedUpgrade, imageListFile string,
-) error {
+func (r *ImageBasedUpgradeReconciler) getSeedImage(ctx context.Context, ibu *lcav1alpha1.ImageBasedUpgrade) error {
 	// Use cluster wide pull-secret by default
 	pullSecretFilename := common.ImageRegistryAuthFile
 
@@ -89,14 +87,6 @@ func (r *ImageBasedUpgradeReconciler) getSeedImage(
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
 
-	mountpoint, err := r.Executor.Execute("podman", "image", "mount", ibu.Spec.SeedImageRef.Image)
-	if err != nil {
-		return fmt.Errorf("failed to mount seed image: %w", err)
-	}
-
-	if err := common.CopyOutsideChroot(filepath.Join(mountpoint, "containers.list"), imageListFile); err != nil {
-		return fmt.Errorf("failed to copy image list file: %w", err)
-	}
 	return nil
 
 }
@@ -211,7 +201,7 @@ func (r *ImageBasedUpgradeReconciler) queryPrecachingStatus(ctx context.Context,
 	return
 }
 
-func (r *ImageBasedUpgradeReconciler) SetupStateroot(ctx context.Context, ibu *lcav1alpha1.ImageBasedUpgrade) error {
+func (r *ImageBasedUpgradeReconciler) SetupStateroot(ctx context.Context, ibu *lcav1alpha1.ImageBasedUpgrade, imageListFile string) error {
 	r.Log.Info("Start setupstateroot")
 
 	defer r.Ops.UnmountAndRemoveImage(ibu.Spec.SeedImageRef.Image)
@@ -332,24 +322,21 @@ func (r *ImageBasedUpgradeReconciler) SetupStateroot(ctx context.Context, ibu *l
 
 	prep.BackupCertificates(ctx, osname, r.ManifestClient)
 
-	if err = common.CopyOutsideChroot(
-		filepath.Join(mountpoint, common.ClusterInfoFileName),
-		getSeedManifestPath(osname),
-	); err != nil {
-		return fmt.Errorf("failed to copy ClusterInfo file: %w", err)
+	if err := common.CopyOutsideChroot(filepath.Join(mountpoint, "containers.list"), imageListFile); err != nil {
+		return fmt.Errorf("failed to copy image list file: %w", err)
 	}
 
 	return nil
 }
 
 func (r *ImageBasedUpgradeReconciler) launchSetupStateroot(ctx context.Context,
-	ibu *lcav1alpha1.ImageBasedUpgrade, progressfile string) (ctrl.Result, error) {
+	ibu *lcav1alpha1.ImageBasedUpgrade, progressfile, imageListFile string) (ctrl.Result, error) {
 	result := requeueImmediately()
 	if err := updateProgressFile(progressfile, "started-stateroot"); err != nil {
 		r.Log.Error(err, "failed to update progress file")
 		return result, err
 	}
-	if err := r.SetupStateroot(ctx, ibu); err != nil {
+	if err := r.SetupStateroot(ctx, ibu, imageListFile); err != nil {
 		r.Log.Error(err, "failed to setup stateroot")
 		if err := updateProgressFile(progressfile, "Failed"); err != nil {
 			r.Log.Error(err, "failed to update progress file")
@@ -411,7 +398,7 @@ func (r *ImageBasedUpgradeReconciler) handlePrep(ctx context.Context, ibu *lcav1
 				"Prep failed",
 				ibu.Generation)
 		} else if progress == "completed-seed-image-pull" {
-			result, err = r.launchSetupStateroot(ctx, ibu, progressfile)
+			result, err = r.launchSetupStateroot(ctx, ibu, progressfile, imageListFile)
 			if err != nil {
 				r.Log.Error(err, "Failed to setupStateroot")
 				return
@@ -453,7 +440,7 @@ func (r *ImageBasedUpgradeReconciler) handlePrep(ctx context.Context, ibu *lcav1
 			result = requeueWithShortInterval()
 		}
 	} else if os.IsNotExist(err) {
-		result, err = r.launchGetSeedImage(ctx, ibu, imageListFile, progressfile)
+		result, err = r.launchGetSeedImage(ctx, ibu, progressfile)
 		if err != nil {
 			r.Log.Error(err, "Failed to launch get-seed-image phase")
 			return
@@ -466,6 +453,6 @@ func (r *ImageBasedUpgradeReconciler) handlePrep(ctx context.Context, ibu *lcav1
 func getSeedManifestPath(osname string) string {
 	return filepath.Join(
 		common.GetStaterootPath(osname),
-		filepath.Join("/var/", common.OptOpenshift, common.SeedManifest),
+		filepath.Join(common.SeedDataDir, common.ClusterInfoFileName),
 	)
 }
