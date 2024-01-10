@@ -102,25 +102,20 @@ func main() {
 		terminateOnError(fmt.Errorf("failed to execute podman command"), Failure)
 	}
 	log.Info("podman is running, proceeding to pre-cache images!")
-
+	// Get auth file for Podman
+	authFile, err := workload.GetAuthFile()
+	if err != nil {
+		terminateOnError(err, Failure)
+	}
 	// Pre-cache images
-	status, err := workload.PullImages(precacheSpec)
+	status, err := workload.PullImages(precacheSpec, authFile)
 	if err != nil {
 		terminateOnError(fmt.Errorf("encountered error while pre-caching images, error: %w", err), Failure)
 	}
 	log.Info("Completed executing pre-caching, no errors encountered!")
 
-	// Check pre-caching execution status
-	if status.Failed != 0 {
-		log.Info("Failed to pre-cache the following images:")
-		for _, image := range status.FailedPullList {
-			log.Info(image)
-		}
-		exitCode := Failure
-		if bestEffort {
-			exitCode = Success
-		}
-		terminateOnError(fmt.Errorf("failed to pre-cache one or more images"), exitCode)
+	if err := workload.ValidatePrecache(status, bestEffort); err != nil {
+		terminateOnError(fmt.Errorf("failed to pre-cache one or more images"), Failure)
 	}
 
 	log.Info("Pre-cached images successfully.")
