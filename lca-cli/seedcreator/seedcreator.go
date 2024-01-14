@@ -247,7 +247,7 @@ func (s *SeedCreator) createContainerList(ctx context.Context) error {
 		return fmt.Errorf("failed to write container list file %s, err %w", containersListFileName, err)
 	}
 
-	s.log.Info("List of containers  saved successfully.")
+	s.log.Info("List of containers saved successfully.")
 	return nil
 }
 
