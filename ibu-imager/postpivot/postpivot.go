@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path"
 	"strings"
@@ -51,12 +52,25 @@ func NewPostPivot(scheme *runtime.Scheme, log *logrus.Logger, ops ops.Ops,
 	}
 }
 
+const (
+	nodeIpFile       = "/run/nodeip-configuration/primary-ip"
+	dnsmasqOverrides = "/etc/default/sno_dnsmasq_configuration_overrides"
+)
+
 func (p *PostPivot) PostPivotConfiguration(ctx context.Context) error {
 	p.log.Info("Reading cluster info")
 	clusterInfo, err := utils.ReadClusterInfoFromFile(
 		path.Join(p.workingDir, common.ClusterConfigDir, common.ClusterInfoFileName))
 	if err != nil {
 		return fmt.Errorf("failed to get cluster info from %s, err: %w", "", err)
+	}
+
+	if err := p.setNodeIPIfNotProvided(ctx, clusterInfo); err != nil {
+		return err
+	}
+
+	if err := p.setDnsMasqConfiguration(clusterInfo); err != nil {
+		return err
 	}
 
 	p.log.Info("Reading seed info")
@@ -352,5 +366,63 @@ func (p *PostPivot) setNewClusterID(ctx context.Context, client runtimeclient.Cl
 	if err != nil {
 		return fmt.Errorf("failed to patch cluster id in clusterversion, err: %w", err)
 	}
+	return nil
+}
+
+func (p *PostPivot) setDnsMasqConfiguration(clusterInfo *clusterinfo.ClusterInfo) error {
+	p.log.Info("Setting new dnsmasq and forcedns dispatcher script configuration")
+	config := []string{
+		fmt.Sprintf("SNO_CLUSTER_NAME_OVERRIDE=%s", clusterInfo.ClusterName),
+		fmt.Sprintf("SNO_BASE_DOMAIN_OVERRIDE=%s", clusterInfo.Domain),
+		fmt.Sprintf("SNO_DNSMASQ_IP_OVERRIDE=%s", clusterInfo.MasterIP),
+	}
+
+	if err := os.WriteFile(dnsmasqOverrides, []byte(strings.Join(config, "\n")), 0o600); err != nil {
+		return fmt.Errorf("failed to configure dnsmasq and forcedns dispatcher script, err %w", err)
+	}
+
+	_, err := p.ops.SystemctlAction("restart", "NetworkManager.service")
+	if err != nil {
+		return fmt.Errorf("failed to restart network manager service, err %w", err)
+	}
+
+	_, err = p.ops.SystemctlAction("restart", "dnsmasq.service")
+	if err != nil {
+		return fmt.Errorf("failed to restart dnsmasq service, err %w", err)
+	}
+
+	return nil
+}
+
+func (p *PostPivot) setNodeIPIfNotProvided(ctx context.Context, clusterInfo *clusterinfo.ClusterInfo) error {
+	if clusterInfo.MasterIP != "" {
+		return nil
+	}
+
+	if _, err := os.Stat(nodeIpFile); err != nil {
+		_, err := p.ops.SystemctlAction("start", "nodeip-configuration")
+		if err != nil {
+			return fmt.Errorf("failed to start nodeip-configuration service, err %w", err)
+		}
+
+		p.log.Info("Start waiting for nodeip service to choose node ip")
+		_ = wait.PollUntilContextCancel(ctx, time.Second, true, func(ctx context.Context) (done bool, err error) {
+			if _, err := os.Stat(nodeIpFile); err != nil {
+				return false, nil
+			}
+			return true, nil
+		})
+	}
+
+	b, err := os.ReadFile(nodeIpFile)
+	if err != nil {
+		return fmt.Errorf("failed to read ip from %s, err: %w", nodeIpFile, err)
+	}
+	ip := net.ParseIP(string(b))
+	if ip == nil {
+		return fmt.Errorf("failed to parse ip %s from %s, err: %w", string(b), nodeIpFile, err)
+	}
+
+	clusterInfo.MasterIP = ip.String()
 	return nil
 }
