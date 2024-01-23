@@ -19,7 +19,6 @@ import (
 	"github.com/openshift-kni/lifecycle-agent/utils"
 	v1 "github.com/openshift/api/config/v1"
 
-	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 	operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
@@ -482,17 +481,16 @@ func (p *PostPivot) setSSHPublicKey(seedReconfiguration *clusterconfig_api.SeedR
 
 func (p *PostPivot) createSSHKeyMachineConfigs(sshKey string) error {
 	p.log.Info("Creating worker and master machine configs with provided ssh key, in order to override seed's")
-	ignConfig := igntypes.Config{
-		Ignition: igntypes.Ignition{
-			Version: igntypes.MaxVersion.String(),
-		},
-		Passwd: igntypes.Passwd{
-			Users: []igntypes.PasswdUser{{
-				Name: "core", SSHAuthorizedKeys: []igntypes.SSHAuthorizedKey{igntypes.SSHAuthorizedKey(sshKey)},
-			}},
+	ignConfig := map[string]interface{}{
+		"ignition": map[string]string{"version": "3.2.0"},
+		"passwd": map[string]interface{}{
+			"users": []interface{}{
+				map[string]interface{}{
+					"name":              "core",
+					"sshAuthorizedKeys": []string{sshKey},
+				}},
 		},
 	}
-
 	rawExt, err := utils.ConvertToRawExtension(ignConfig)
 	if err != nil {
 		return err

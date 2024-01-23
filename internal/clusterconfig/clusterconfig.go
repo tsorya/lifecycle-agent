@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-logr/logr"
 	v1 "github.com/openshift/api/config/v1"
-	mcv1 "github.com/openshift/api/machineconfiguration/v1"
 	operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -16,8 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	ignition "github.com/coreos/ignition/v2/config/v3_2"
 
 	"github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	"github.com/openshift-kni/lifecycle-agent/internal/common"
@@ -53,6 +50,8 @@ const (
 	networkDir = "/opt/openshift/network-configuration"
 
 	masterSSHMachineConfig = "99-master-ssh"
+
+	sshKeyFile = "/home/core/.ssh/authorized_keys.d/ignition"
 )
 
 var (
@@ -164,29 +163,17 @@ func (r *UpgradeClusterConfigGather) fetchProxy(ctx context.Context, manifestsDi
 	return utils.MarshalToFile(p, filePath)
 }
 
-func (r *UpgradeClusterConfigGather) fetchSSHPublicKey(ctx context.Context,
-	seedReconfiguration *seedreconfig.SeedReconfiguration) error {
-
-	machineConfig := mcv1.MachineConfig{}
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: masterSSHMachineConfig}, &machineConfig); err != nil {
-		return err
-	}
-
-	config, _, err := ignition.Parse(machineConfig.Spec.Config.Raw)
+func (r *UpgradeClusterConfigGather) fetchSSHPublicKey() (string, error) {
+	sshKey, err := os.ReadFile(common.PathOutsideChroot(sshKeyFile))
 	if err != nil {
-		return err
+		return "", err
 	}
-	for _, user := range config.Passwd.Users {
-		if user.Name == "core" {
-			seedReconfiguration.SSHPublicKey = string(user.SSHAuthorizedKeys[0])
-		}
-	}
-
-	return nil
+	return string(sshKey), err
 }
 
 func SeedReconfigurationFromClusterInfo(clusterInfo *utils.ClusterInfo,
-	kubeconfigCryptoRetention *seedreconfig.KubeConfigCryptoRetention) *seedreconfig.SeedReconfiguration {
+	kubeconfigCryptoRetention *seedreconfig.KubeConfigCryptoRetention, sshKey string) *seedreconfig.SeedReconfiguration {
+
 	return &seedreconfig.SeedReconfiguration{
 		APIVersion:                seedreconfig.SeedReconfigurationVersion,
 		BaseDomain:                clusterInfo.BaseDomain,
@@ -196,6 +183,7 @@ func SeedReconfigurationFromClusterInfo(clusterInfo *utils.ClusterInfo,
 		ReleaseRegistry:           clusterInfo.ReleaseRegistry,
 		Hostname:                  clusterInfo.Hostname,
 		KubeconfigCryptoRetention: *kubeconfigCryptoRetention,
+		SSHPublicKey:              sshKey,
 	}
 }
 
@@ -211,11 +199,12 @@ func (r *UpgradeClusterConfigGather) fetchClusterInfo(ctx context.Context, clust
 	if err != nil {
 		return fmt.Errorf("failed to get kubeconfig retention from crypto dir: %w", err)
 	}
-
-	seedReconfiguration := SeedReconfigurationFromClusterInfo(clusterInfo, seedReconfigurationKubeconfigRetention)
-	if err := r.fetchSSHPublicKey(ctx, seedReconfiguration); err != nil {
+	sshKey, err := r.fetchSSHPublicKey()
+	if err != nil {
 		return err
 	}
+
+	seedReconfiguration := SeedReconfigurationFromClusterInfo(clusterInfo, seedReconfigurationKubeconfigRetention, sshKey)
 
 	filePath := filepath.Join(clusterConfigPath, common.SeedReconfigurationFileName)
 	r.Log.Info("Writing ClusterInfo to file", "path", filePath)

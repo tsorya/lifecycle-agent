@@ -7,12 +7,40 @@ github.com/blang/semver/v4
 # github.com/cespare/xxhash/v2 v2.2.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
+# github.com/coreos/go-json v0.0.0-20230131223807-18775e0fb4fb
+## explicit; go 1.18
+github.com/coreos/go-json
 # github.com/coreos/go-semver v0.3.1
 ## explicit; go 1.8
 github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd/v22 v22.5.0
 ## explicit; go 1.12
 github.com/coreos/go-systemd/v22/journal
+github.com/coreos/go-systemd/v22/unit
+# github.com/coreos/ignition/v2 v2.17.0
+## explicit; go 1.19
+github.com/coreos/ignition/v2/config/merge
+github.com/coreos/ignition/v2/config/shared/errors
+github.com/coreos/ignition/v2/config/shared/parse
+github.com/coreos/ignition/v2/config/shared/validations
+github.com/coreos/ignition/v2/config/translate
+github.com/coreos/ignition/v2/config/util
+github.com/coreos/ignition/v2/config/v3_0
+github.com/coreos/ignition/v2/config/v3_0/types
+github.com/coreos/ignition/v2/config/v3_1
+github.com/coreos/ignition/v2/config/v3_1/translate
+github.com/coreos/ignition/v2/config/v3_1/types
+github.com/coreos/ignition/v2/config/v3_2
+github.com/coreos/ignition/v2/config/v3_2/translate
+github.com/coreos/ignition/v2/config/v3_2/types
+github.com/coreos/ignition/v2/config/validate
+# github.com/coreos/vcontext v0.0.0-20230201181013-d72178a18687
+## explicit; go 1.18
+github.com/coreos/vcontext/json
+github.com/coreos/vcontext/path
+github.com/coreos/vcontext/report
+github.com/coreos/vcontext/tree
+github.com/coreos/vcontext/validate
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
@@ -82,7 +110,7 @@ github.com/google/gofuzz
 github.com/google/gofuzz/bytesource
 # github.com/google/pprof v0.0.0-20230323073829-e72429f035bd
 ## explicit; go 1.19
-# github.com/google/uuid v1.3.1
+# github.com/google/uuid v1.4.0
 ## explicit
 github.com/google/uuid
 # github.com/imdario/mergo v0.3.16
@@ -171,6 +199,9 @@ github.com/spf13/pflag
 # github.com/stretchr/testify v1.8.4
 ## explicit; go 1.20
 github.com/stretchr/testify/assert
+# github.com/vincent-petithory/dataurl v1.0.0
+## explicit
+github.com/vincent-petithory/dataurl
 # github.com/vmware-tanzu/velero v1.12.0
 ## explicit; go 1.20
 github.com/vmware-tanzu/velero/pkg/apis/velero/shared
@@ -221,8 +252,8 @@ golang.org/x/exp/maps
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.17.0
-## explicit; go 1.17
+# golang.org/x/net v0.18.0
+## explicit; go 1.18
 golang.org/x/net/context
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
@@ -230,25 +261,25 @@ golang.org/x/net/http2/hpack
 golang.org/x/net/idna
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.12.0
+# golang.org/x/oauth2 v0.14.0
 ## explicit; go 1.18
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.4.0
-## explicit; go 1.17
+# golang.org/x/sync v0.5.0
+## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.13.0
-## explicit; go 1.17
+# golang.org/x/sys v0.14.0
+## explicit; go 1.18
 golang.org/x/sys/execabs
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/term v0.13.0
-## explicit; go 1.17
+# golang.org/x/term v0.14.0
+## explicit; go 1.18
 golang.org/x/term
-# golang.org/x/text v0.13.0
-## explicit; go 1.17
+# golang.org/x/text v0.14.0
+## explicit; go 1.18
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
@@ -282,17 +313,17 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/urlfetch
-# google.golang.org/genproto v0.0.0-20230711160842-782d3b101e98
+# google.golang.org/genproto v0.0.0-20231016165738-49dd2c1f3d0b
 ## explicit; go 1.19
 google.golang.org/genproto/internal
-# google.golang.org/genproto/googleapis/api v0.0.0-20230711160842-782d3b101e98
+# google.golang.org/genproto/googleapis/api v0.0.0-20231016165738-49dd2c1f3d0b
 ## explicit; go 1.19
 google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20230711160842-782d3b101e98
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20231030173426-d783a09b4405
 ## explicit; go 1.19
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.58.3
+# google.golang.org/grpc v1.59.0
 ## explicit; go 1.19
 google.golang.org/grpc
 google.golang.org/grpc/attributes

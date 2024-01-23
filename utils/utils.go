@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	"net"
 	"os"
 	"path"
@@ -283,7 +282,7 @@ func InitIBU(ctx context.Context, c client.Client, log *logr.Logger) error {
 	return nil
 }
 
-func ConvertToRawExtension(config igntypes.Config) (runtime.RawExtension, error) {
+func ConvertToRawExtension(config any) (runtime.RawExtension, error) {
 	rawIgnConfig, err := json.Marshal(config)
 	if err != nil {
 		return runtime.RawExtension{}, fmt.Errorf("failed to marshal Ignition config: %w", err)
