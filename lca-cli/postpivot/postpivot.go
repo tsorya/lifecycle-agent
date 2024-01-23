@@ -208,7 +208,7 @@ func (p *PostPivot) postRecertCommands(ctx context.Context, clusterInfo *cluster
 
 	// changing seed ip to new ip in all static pod files
 	_, err := p.ops.RunBashInHostNamespace(fmt.Sprintf("find /etc/kubernetes/ -type f -print0 | xargs -0 sed -i \"s/%s/%s/g\"",
-		seedClusterInfo.NodeIP, clusterInfo.NodeIP))
+		seedEtcdIp, newEtcdIp))
 	if err != nil {
 		return fmt.Errorf("failed to change seed ip to new ip in /etc/kubernetes, err: %w", err)
 	}
