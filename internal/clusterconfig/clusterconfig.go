@@ -17,6 +17,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	ignition "github.com/coreos/ignition/v2/config/v3_2"
+
 	"github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
 	"github.com/openshift-kni/lifecycle-agent/internal/common"
 	"github.com/openshift-kni/lifecycle-agent/utils"
@@ -49,14 +51,11 @@ const (
 	caBundleFileName = caBundleCMName + ".json"
 
 	networkDir = "/opt/openshift/network-configuration"
+
+	masterSSHMachineConfig = "99-master-ssh"
 )
 
 var (
-	machineConfigNames = []string{
-		"99-master-ssh",
-		"99-worker-ssh",
-	}
-
 	hostPath                = common.Host
 	listOfNetworkFilesPaths = []string{
 		"/etc/NetworkManager/system-connections",
@@ -97,9 +96,6 @@ func (r *UpgradeClusterConfigGather) FetchClusterConfig(ctx context.Context, ost
 	}
 
 	if err := r.fetchClusterInfo(ctx, clusterConfigPath); err != nil {
-		return err
-	}
-	if err := r.fetchMachineConfigs(ctx, manifestsDir); err != nil {
 		return err
 	}
 	if err := r.fetchCABundle(ctx, manifestsDir, clusterConfigPath); err != nil {
@@ -168,34 +164,24 @@ func (r *UpgradeClusterConfigGather) fetchProxy(ctx context.Context, manifestsDi
 	return utils.MarshalToFile(p, filePath)
 }
 
-func (r *UpgradeClusterConfigGather) fetchMachineConfigs(ctx context.Context, manifestsDir string) error {
-	for _, machineConfigName := range machineConfigNames {
-		r.Log.Info("Fetching MachineConfig", "name", machineConfigName)
+func (r *UpgradeClusterConfigGather) fetchSSHPublicKey(ctx context.Context,
+	seedReconfiguration *seedreconfig.SeedReconfiguration) error {
 
-		machineConfig := mcv1.MachineConfig{}
-		if err := r.Client.Get(ctx, types.NamespacedName{Name: machineConfigName}, &machineConfig); err != nil {
-			return err
-		}
+	machineConfig := mcv1.MachineConfig{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: masterSSHMachineConfig}, &machineConfig); err != nil {
+		return err
+	}
 
-		mc := mcv1.MachineConfig{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   machineConfig.Name,
-				Labels: machineConfig.Labels,
-			},
-			Spec: machineConfig.Spec,
-		}
-		machineConfigTypeMeta, err := r.typeMetaForObject(&machineConfig)
-		if err != nil {
-			return err
-		}
-		mc.TypeMeta = *machineConfigTypeMeta
-
-		filePath := filepath.Join(manifestsDir, machineConfig.Name+".json")
-		r.Log.Info("Writing MachineConfig to file", "path", filePath)
-		if err := utils.MarshalToFile(mc, filePath); err != nil {
-			return err
+	config, _, err := ignition.Parse(machineConfig.Spec.Config.Raw)
+	if err != nil {
+		return err
+	}
+	for _, user := range config.Passwd.Users {
+		if user.Name == "core" {
+			seedReconfiguration.SSHPublicKey = string(user.SSHAuthorizedKeys[0])
 		}
 	}
+
 	return nil
 }
 
@@ -227,6 +213,9 @@ func (r *UpgradeClusterConfigGather) fetchClusterInfo(ctx context.Context, clust
 	}
 
 	seedReconfiguration := SeedReconfigurationFromClusterInfo(clusterInfo, seedReconfigurationKubeconfigRetention)
+	if err := r.fetchSSHPublicKey(ctx, seedReconfiguration); err != nil {
+		return err
+	}
 
 	filePath := filepath.Join(clusterConfigPath, common.SeedReconfigurationFileName)
 	r.Log.Info("Writing ClusterInfo to file", "path", filePath)

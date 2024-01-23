@@ -18,6 +18,7 @@ package clusterconfig
 
 import (
 	"context"
+	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,6 +94,17 @@ var (
 		},
 	}
 
+	ignConfig = igntypes.Config{
+		Ignition: igntypes.Ignition{
+			Version: igntypes.MaxVersion.String(),
+		},
+		Passwd: igntypes.Passwd{
+			Users: []igntypes.PasswdUser{{
+				Name: "core", SSHAuthorizedKeys: []igntypes.SSHAuthorizedKey{igntypes.SSHAuthorizedKey("sshKey")},
+			}},
+		},
+	}
+
 	seedManifestData = seedreconfig.SeedReconfiguration{BaseDomain: "seed.com", ClusterName: "seed", NodeIP: "192.168.127.10", Hostname: "seed"}
 
 	machineConfigs = []*mcv1.MachineConfig{
@@ -101,6 +113,7 @@ var (
 				Name:   "99-master-ssh",
 				Labels: map[string]string{"machineconfiguration.openshift.io/role": "master"},
 			},
+			Spec: mcv1.MachineConfigSpec{},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{
@@ -272,6 +285,7 @@ func TestClusterConfig(t *testing.T) {
 				if err := utils.ReadYamlOrJSONFile(filepath.Join(clusterConfigPath, common.SeedClusterInfoFileName), clusterInfo); err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
+				assert.Equal(t, "sshKey", clusterInfo.SSHPublicKey)
 				assert.Equal(t, "test-infra-cluster", clusterInfo.ClusterName)
 				assert.Equal(t, "redhat.com", clusterInfo.BaseDomain)
 				assert.Equal(t, "192.168.121.10", clusterInfo.NodeIP)
@@ -365,7 +379,7 @@ func TestClusterConfig(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
-				assert.Equal(t, 4, len(dir))
+				assert.Equal(t, 2, len(dir))
 			},
 		},
 		{
@@ -507,6 +521,11 @@ func TestClusterConfig(t *testing.T) {
 			}
 
 			for _, mc := range tc.machineConfigs {
+				rawExt, err := utils.ConvertToRawExtension(ignConfig)
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				mc.Spec.Config = rawExt
 				objs = append(objs, mc)
 			}
 

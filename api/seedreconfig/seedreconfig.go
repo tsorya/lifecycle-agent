@@ -56,6 +56,9 @@ type SeedReconfiguration struct {
 	// being upgraded. In the case of IBI, this material is generated when the
 	// cluster's kubeconfig is being prepared in advance.
 	KubeconfigCryptoRetention KubeConfigCryptoRetention
+
+	// SSH public key for debugging OpenShift nodes.
+	SSHPublicKey string `json:"ssh_public_key,omitempty"`
 }
 
 type KubeConfigCryptoRetention struct {
