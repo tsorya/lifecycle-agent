@@ -186,7 +186,7 @@ func TestClusterConfig(t *testing.T) {
 					Name:      pullSecretName,
 					Namespace: configNamespace,
 				},
-				Data: map[string][]byte{"aaa": []byte("bbb")},
+				Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte("pull-secret")},
 			},
 			clusterVersion: &ocpV1.ClusterVersion{
 				ObjectMeta: metav1.ObjectMeta{
@@ -229,16 +229,16 @@ func TestClusterConfig(t *testing.T) {
 				assert.Equal(t, proxyName, proxy.Name)
 				assert.Equal(t, "some-http-proxy", proxy.Spec.HTTPProxy)
 
-				// validate pull secret
-				secret := &corev1.Secret{}
-				if err := utils.ReadYamlOrJSONFile(filepath.Join(manifestsDir, pullSecretFileName), secret); err != nil {
-					t.Errorf("unexpected error: %v", err)
-				}
-
-				testData := map[string][]byte{"aaa": []byte("bbb")}
-				assert.Equal(t, testData, secret.Data)
-				assert.Equal(t, pullSecretName, secret.Name)
-				assert.Equal(t, configNamespace, secret.Namespace)
+				//// validate pull secret
+				//secret := &corev1.Secret{}
+				//if err := utils.ReadYamlOrJSONFile(filepath.Join(manifestsDir, pullSecretFileName), secret); err != nil {
+				//	t.Errorf("unexpected error: %v", err)
+				//}
+				//
+				//testData := map[string][]byte{"aaa": []byte("bbb")}
+				//assert.Equal(t, testData, secret.Data)
+				//assert.Equal(t, pullSecretName, secret.Name)
+				//assert.Equal(t, configNamespace, secret.Namespace)
 
 				// validate pull idms
 				idms := &ocpV1.ImageDigestMirrorSetList{}
@@ -256,6 +256,7 @@ func TestClusterConfig(t *testing.T) {
 				if err := utils.ReadYamlOrJSONFile(filepath.Join(clusterConfigPath, common.SeedClusterInfoFileName), clusterInfo); err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
+				assert.Equal(t, "pull-secret", clusterInfo.PullSecret)
 				assert.Equal(t, "ssh-key", clusterInfo.SSHKey)
 				assert.Equal(t, "test-infra-cluster", clusterInfo.ClusterName)
 				assert.Equal(t, "redhat.com", clusterInfo.BaseDomain)
@@ -296,6 +297,7 @@ func TestClusterConfig(t *testing.T) {
 					Name:      pullSecretName,
 					Namespace: configNamespace,
 				},
+				Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte("pull-secret")},
 			},
 			idms:       nil,
 			icsps:      nil,
@@ -319,6 +321,7 @@ func TestClusterConfig(t *testing.T) {
 					Name:      pullSecretName,
 					Namespace: configNamespace,
 				},
+				Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte("pull-secret")},
 			},
 			clusterVersion: &ocpV1.ClusterVersion{
 				ObjectMeta: metav1.ObjectMeta{
@@ -347,7 +350,7 @@ func TestClusterConfig(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
-				assert.Equal(t, 2, len(dir))
+				assert.Equal(t, 1, len(dir))
 			},
 		},
 		{
@@ -357,6 +360,7 @@ func TestClusterConfig(t *testing.T) {
 					Name:      pullSecretName,
 					Namespace: configNamespace,
 				},
+				Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte("pull-secret")},
 			},
 			clusterVersion: &ocpV1.ClusterVersion{
 				ObjectMeta: metav1.ObjectMeta{
@@ -389,7 +393,7 @@ func TestClusterConfig(t *testing.T) {
 					Name:      pullSecretName,
 					Namespace: configNamespace,
 				},
-				Data: map[string][]byte{"aaa": []byte("bbb")},
+				Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte("pull-secret")},
 			},
 			clusterVersion: &ocpV1.ClusterVersion{
 				ObjectMeta: metav1.ObjectMeta{

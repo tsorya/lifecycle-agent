@@ -61,6 +61,9 @@ type SeedReconfiguration struct {
 	// instances. Equivalent to install-config.yaml's sshKey. This will replace
 	// the SSH keys of the seed cluster.
 	SSHKey string `json:"ssh_key,omitempty"`
+
+	// The pull secret that obtained from the Pull Secret page on the Red Hat OpenShift Cluster Manager site.
+	PullSecret string `json:"pull_secret,omitempty"`
 }
 
 type KubeConfigCryptoRetention struct {

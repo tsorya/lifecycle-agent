@@ -26,6 +26,7 @@ import (
 	cp "github.com/otiai10/copy"
 	"github.com/sirupsen/logrus"
 	etcdClient "go.etcd.io/etcd/client/v3"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -58,6 +59,7 @@ const (
 	sshKeyEarlyAccessFile = "/home/core/.ssh/authorized_keys.d/ib-early-access"
 	userCore              = "core"
 	sshMachineConfig      = "99-%s-ssh"
+	pullSecretFileName    = "pullsecret.json"
 )
 
 func (p *PostPivot) PostPivotConfiguration(ctx context.Context) error {
@@ -96,6 +98,11 @@ func (p *PostPivot) PostPivotConfiguration(ctx context.Context) error {
 	}
 
 	if err := p.copyClusterConfigFiles(); err != nil {
+		return err
+	}
+
+	if err := p.createPullSecretFile(seedReconfiguration, path.Join(p.workingDir, common.ClusterConfigDir,
+		common.ManifestsDir, pullSecretFileName)); err != nil {
 		return err
 	}
 
@@ -515,6 +522,34 @@ func (p *PostPivot) createSSHKeyMachineConfigs(sshKey string) error {
 			common.ManifestsDir, fmt.Sprintf(sshMachineConfig, role))); err != nil {
 			return fmt.Errorf("failed to marshal ssh key into file for role %s, err: %w", role, err)
 		}
+	}
+
+	return nil
+}
+
+func (p *PostPivot) createPullSecretFile(seedReconfiguration *clusterconfig_api.SeedReconfiguration, pullSecretFile string) error {
+	if seedReconfiguration.PullSecret == "" {
+		p.log.Infof("Pull secret was not provided")
+		return nil
+	}
+
+	p.log.Infof("Creating pull secret file %s", pullSecretFile)
+	ps := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      common.PullSecretName,
+			Namespace: common.ConfigNamespace,
+		},
+		Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte(seedReconfiguration.PullSecret)},
+		Type: corev1.SecretTypeDockerConfigJson,
+	}
+	typeMeta, err := utils.TypeMetaForObject(p.scheme, &ps)
+	if err != nil {
+		return fmt.Errorf("failed to create typeMetafor pull secret, err: %w", err)
+	}
+	ps.TypeMeta = *typeMeta
+
+	if err := utils.MarshalToFile(ps, pullSecretFile); err != nil {
+		return fmt.Errorf("failed to marshal pull secret into file, err: %w", err)
 	}
 
 	return nil
