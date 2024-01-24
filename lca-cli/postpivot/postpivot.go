@@ -198,13 +198,13 @@ func (p *PostPivot) postRecertCommands(ctx context.Context, clusterInfo *cluster
 	}
 
 	newEtcdIp := clusterInfo.NodeIP
-	if utils.IsIpv6(newEtcdIp) {
-		newEtcdIp = fmt.Sprintf("[%s]", newEtcdIp)
-	}
+	//if utils.IsIpv6(newEtcdIp) {
+	//	newEtcdIp = fmt.Sprintf("[%s]", newEtcdIp)
+	//}
 	seedEtcdIp := seedClusterInfo.NodeIP
-	if utils.IsIpv6(seedEtcdIp) {
-		seedEtcdIp = fmt.Sprintf("[%s]", seedEtcdIp)
-	}
+	//if utils.IsIpv6(seedEtcdIp) {
+	//	seedEtcdIp = fmt.Sprintf("[%s]", seedEtcdIp)
+	//}
 
 	// changing seed ip to new ip in all static pod files
 	_, err := p.ops.RunBashInHostNamespace(fmt.Sprintf("find /etc/kubernetes/ -type f -print0 | xargs -0 sed -i \"s/%s/%s/g\"",
