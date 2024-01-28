@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -63,9 +64,16 @@ const (
 	// it will be applied with all other manifests
 	pullSecretFileName   = "pull-secret.json"
 	seedPullSecretSuffix = "_seed"
+
+	hostnameFile = "/etc/hostname"
 )
 
 func (p *PostPivot) PostPivotConfiguration(ctx context.Context) error {
+
+	if err := p.waifForConfiguration(ctx, path.Join(common.OptOpenshift, common.ClusterConfigDir)); err != nil {
+		return err
+	}
+
 	p.log.Info("Reading seed image info")
 	seedClusterInfo, err := seedclusterinfo.ReadSeedClusterInfoFromFile(path.Join(common.SeedDataDir, common.SeedClusterInfoFileName))
 	if err != nil {
@@ -77,6 +85,10 @@ func (p *PostPivot) PostPivotConfiguration(ctx context.Context) error {
 		path.Join(p.workingDir, common.ClusterConfigDir, common.SeedClusterInfoFileName))
 	if err != nil {
 		return fmt.Errorf("failed to get cluster info from %s, err: %w", "", err)
+	}
+
+	if err := p.networkConfiguration(ctx, seedReconfiguration); err != nil {
+		return fmt.Errorf("failed to configure networking, err: %w", err)
 	}
 
 	if err := utils.RunOnce("setSSHKey", p.workingDir, p.log, p.setSSHKey,
@@ -92,18 +104,6 @@ func (p *PostPivot) PostPivotConfiguration(ctx context.Context) error {
 
 	if seedReconfiguration.APIVersion != clusterconfig_api.SeedReconfigurationVersion {
 		return fmt.Errorf("unsupported seed reconfiguration version %d", seedReconfiguration.APIVersion)
-	}
-
-	if err := utils.RunOnce("applyNMStateConfiguration", p.workingDir, p.log, p.applyNMStateConfiguration, seedReconfiguration); err != nil {
-		return err
-	}
-
-	if err := p.setNodeIPIfNotProvided(ctx, seedReconfiguration, nodeIpFile); err != nil {
-		return err
-	}
-
-	if err := p.setDnsMasqConfiguration(seedReconfiguration, dnsmasqOverrides); err != nil {
-		return err
 	}
 
 	if err := utils.RunOnce("recert", p.workingDir, p.log, p.recert, ctx, seedReconfiguration, seedClusterInfo); err != nil {
@@ -174,6 +174,18 @@ func (p *PostPivot) recert(ctx context.Context, seedReconfiguration *clusterconf
 		p.workingDir); err != nil {
 		return err
 	}
+
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	_ = wait.PollUntilContextCancel(ctxWithTimeout, time.Second, true, func(ctx context.Context) (bool, error) {
+		p.log.Info("pulling recert image")
+		if _, err := p.ops.RunInHostNamespace("podman", "pull", seedClusterInfo.RecertImagePullSpec); err != nil {
+			p.log.Warnf("failed to pull recert image, will retry, err: %s", err.Error())
+			return false, nil
+		}
+		// TODO: add waiting for block device with label
+		return true, nil
+	})
+	defer cancel()
 
 	err := p.ops.RecertFullFlow(seedClusterInfo.RecertImagePullSpec, p.authFile,
 		path.Join(p.workingDir, recert.RecertConfigFile),
@@ -428,16 +440,6 @@ func (p *PostPivot) setDnsMasqConfiguration(seedReconfiguration *clusterconfig_a
 		return fmt.Errorf("failed to configure dnsmasq and forcedns dispatcher script, err %w", err)
 	}
 
-	_, err := p.ops.SystemctlAction("restart", "NetworkManager.service")
-	if err != nil {
-		return fmt.Errorf("failed to restart network manager service, err %w", err)
-	}
-
-	_, err = p.ops.SystemctlAction("restart", "dnsmasq.service")
-	if err != nil {
-		return fmt.Errorf("failed to restart dnsmasq service, err %w", err)
-	}
-
 	return nil
 }
 
@@ -600,5 +602,143 @@ func (p *PostPivot) createPullSecretManifest(pullSecret, pullSecretManifest stri
 	if err := utils.MarshalToFile(ps, pullSecretManifest); err != nil {
 		return fmt.Errorf("failed to marshal pull secret into file, err: %w", err)
 	}
+	return nil
+}
+
+// waifForConfiguration waits till configuration folder exists or till device with label "relocation-config" is added.
+// in case device was provided we are mounting it and copying files to configFolder
+func (p *PostPivot) waifForConfiguration(ctx context.Context, configFolder string) error {
+	if _, err := os.Stat(configFolder); err == nil {
+		return nil
+	}
+	label := "relocation-config"
+	// TODO: should we timeout at some point? or timeout on each error?
+	err := wait.PollUntilContextCancel(ctx, time.Second, true, func(ctx context.Context) (bool, error) {
+		p.log.Infof("waiting for block device with label %s or for configuration folder", label)
+		if _, err := os.Stat(configFolder); err == nil {
+			return true, nil
+		}
+		blockDevices, err := p.ops.ListBlockDevices()
+		if err != nil {
+			p.log.Infof("Failed to list block devices with error %s, will retry", err.Error())
+			return false, nil
+		}
+		for _, bd := range blockDevices {
+			if bd.Label == label {
+				if err := p.setupConfigurationFolder(bd.Name, "/mnt/config", path.Dir(configFolder)); err != nil {
+					return false, err
+				}
+				return true, nil
+			}
+		}
+		// TODO: add waiting for block device with label
+		return false, nil
+	})
+
+	return err
+}
+
+// setupConfigurationFolder mounts device to mountFolder and copies everything to configFolder
+func (p *PostPivot) setupConfigurationFolder(deviceName, mountFolder, configFolder string) error {
+	p.log.Infof("Running setup of configuration folder")
+	if err := os.MkdirAll(configFolder, 0o700); err != nil {
+		return fmt.Errorf("failed to create %s, err: %w", configFolder, err)
+	}
+
+	if err := p.ops.Mount(deviceName, mountFolder); err != nil {
+		return err
+	}
+
+	if err := utils.CopyFileIfExists(mountFolder, configFolder); err != nil {
+		return fmt.Errorf("failed to copy contert of %s to %s, err: %w", mountFolder, configFolder, err)
+	}
+
+	defer func() {
+		// TODO: should we fail if umount fails?
+		_ = p.ops.Umount(deviceName)
+		_ = os.RemoveAll(mountFolder)
+	}()
+
+	return nil
+}
+
+// cleanupNMConnections removes old *.nmconnection files
+func (p *PostPivot) cleanupNMConnections(nmconnectionsFolder string) error {
+	p.log.Infof("Removing seed nmconnection files")
+	files, err := filepath.Glob(path.Join(nmconnectionsFolder, "*.nmconnection"))
+	if err != nil {
+		return fmt.Errorf("failed to find nmconnection files in %s, %w", nmconnectionsFolder, err)
+	}
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
+			return fmt.Errorf("failed to remove %s", f)
+		}
+	}
+	return nil
+}
+
+// setHostname writes provided hostname to hostnameFile
+func (p *PostPivot) setHostname(hostname, hostnameFile string) error {
+	p.log.Infof("Writing new hostname %s into %s", hostname, hostnameFile)
+	if err := os.WriteFile(hostnameFile, []byte(hostname), 0o600); err != nil {
+		return fmt.Errorf("failed to configure hostname, err %w", err)
+	}
+	return nil
+}
+
+// copyNMConnectionFiles as part of the process nmconnection files can be provided and we should copy them into etc folder
+func (p *PostPivot) copyNMConnectionFiles(source, dest string) error {
+	p.log.Infof("Copying nmconnection files if they were provided")
+	err := utils.CopyFileIfExists(source, dest)
+	if err != nil {
+		return fmt.Errorf("failed to copy nmconnection files from %s to %s, err: %w", source, dest, err)
+	}
+
+	return nil
+}
+
+// networkConfiguration is on charge of configuring network prior installation process.
+// This function should include all network configurations of post-pivot flow.
+// It's logic currently includes:
+// 1. Cleanup of nmconnection files from seed
+// 2. Copying provided nmconnection files to NM sysconnections to setup network provided by user
+// 3. Apply provided NMstate configurations
+// 4. In case ip was not provided by user we should run set ip logic that can be found in setNodeIPIfNotProvided
+// 5. Override seed dnsmasq params
+// 6. Restart NM and dnsmasq in order to apply provided configurations
+func (p *PostPivot) networkConfiguration(ctx context.Context, seedReconfiguration *clusterconfig_api.SeedReconfiguration) error {
+	if err := p.cleanupNMConnections(common.NMConnectionFolder); err != nil {
+		return err
+	}
+
+	if err := p.copyNMConnectionFiles(
+		path.Join(p.workingDir, common.NetworkDir, "system-connections"), common.NMConnectionFolder); err != nil {
+		return err
+	}
+
+	if err := p.applyNMStateConfiguration(seedReconfiguration); err != nil {
+		return err
+	}
+
+	if err := p.setNodeIPIfNotProvided(ctx, seedReconfiguration, nodeIpFile); err != nil {
+		return err
+	}
+
+	if err := p.setDnsMasqConfiguration(seedReconfiguration, dnsmasqOverrides); err != nil {
+		return err
+	}
+
+	if err := p.setHostname(seedReconfiguration.Hostname, hostnameFile); err != nil {
+		return err
+	}
+
+	if _, err := p.ops.SystemctlAction("restart", "NetworkManager.service"); err != nil {
+		return fmt.Errorf("failed to restart network manager service, err %w", err)
+	}
+
+	if _, err := p.ops.SystemctlAction("restart", "dnsmasq.service"); err != nil {
+		return fmt.Errorf("failed to restart dnsmasq service, err %w", err)
+	}
+
 	return nil
 }

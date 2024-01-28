@@ -16,6 +16,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 
 	clusterconfig_api "github.com/openshift-kni/lifecycle-agent/api/seedreconfig"
+
 	"github.com/openshift-kni/lifecycle-agent/lca-cli/ops"
 	"github.com/openshift-kni/lifecycle-agent/utils"
 )
@@ -130,8 +131,6 @@ func TestSetDnsMasqConfiguration(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			log := &logrus.Logger{}
 			pp := NewPostPivot(nil, log, mockOps, "", "", "")
-			mockOps.EXPECT().SystemctlAction("restart", "NetworkManager.service").Return("", nil)
-			mockOps.EXPECT().SystemctlAction("restart", "dnsmasq.service").Return("", nil)
 			confFile := path.Join(tmpDir, "override")
 			err := pp.setDnsMasqConfiguration(tc.seedReconfiguration, confFile)
 			if !tc.expectedError && err != nil {
@@ -277,7 +276,6 @@ func TestCreatePullSecretFile(t *testing.T) {
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
-
 			if tc.pullSecret != "" {
 				secret := &corev1.Secret{}
 				err = utils.ReadYamlOrJSONFile(pullSecretManifestFile, secret)
@@ -299,7 +297,42 @@ func TestCreatePullSecretFile(t *testing.T) {
 			} else if _, err := os.Stat(pullSecretFile); err == nil {
 				t.Errorf("expected no pull secret file to be created")
 			}
+		})
+	}
+}
 
+func TestSetHostname(t *testing.T) {
+	var (
+		mockController = gomock.NewController(t)
+		mockOps        = ops.NewMockOps(mockController)
+	)
+	defer func() {
+		mockController.Finish()
+	}()
+
+	testcases := []struct {
+		name     string
+		hostname string
+	}{
+		{
+			name:     "Happy flow",
+			hostname: "test",
+		},
+	}
+	for _, tc := range testcases {
+		tmpDir := t.TempDir()
+		t.Run(tc.name, func(t *testing.T) {
+			log := &logrus.Logger{}
+			pp := NewPostPivot(nil, log, mockOps, "", "", "")
+			err := pp.setHostname(tc.hostname, path.Join(tmpDir+"hostname"))
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			data, err := os.ReadFile(path.Join(tmpDir + "hostname"))
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			assert.Equal(t, "test", string(data))
 		})
 	}
 }
