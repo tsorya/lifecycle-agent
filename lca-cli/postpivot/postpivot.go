@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/samber/lo"
 	"net"
 	"os"
 	"path"
@@ -611,10 +612,12 @@ func (p *PostPivot) waifForConfiguration(ctx context.Context, configFolder strin
 	if _, err := os.Stat(configFolder); err == nil {
 		return nil
 	}
-	label := "relocation-config"
+	// TODO: change for single logic "cluster-config" after all the components will be change to set it
+	// List of labels only for backward compatibility till all the components will be changed
+	labels := []string{"relocation-config", "cluster-config"}
 	// TODO: should we timeout at some point? or timeout on each error?
 	err := wait.PollUntilContextCancel(ctx, time.Second, true, func(ctx context.Context) (bool, error) {
-		p.log.Infof("waiting for block device with label %s or for configuration folder", label)
+		p.log.Infof("waiting for block device with one of the label %s or for configuration folder", labels)
 		if _, err := os.Stat(configFolder); err == nil {
 			return true, nil
 		}
@@ -624,7 +627,7 @@ func (p *PostPivot) waifForConfiguration(ctx context.Context, configFolder strin
 			return false, nil
 		}
 		for _, bd := range blockDevices {
-			if bd.Label == label {
+			if lo.Contains(labels, bd.Label) {
 				if err := p.setupConfigurationFolder(bd.Name, "/mnt/config", path.Dir(configFolder)); err != nil {
 					return false, err
 				}
