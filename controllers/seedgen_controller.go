@@ -734,14 +734,13 @@ func (r *SeedGeneratorReconciler) setupWorkspace() error {
 }
 
 // Generate the seed image
-func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen *seedgenv1alpha1.SeedGenerator, clusterName string) (nextReconcile ctrl.Result, rc error) {
+func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen *seedgenv1alpha1.SeedGenerator, clusterName string) (ctrl.Result, error) {
 	// Wait for system stability before starting seed generation
 	r.Log.Info("Checking system health")
 	if err := healthcheck.HealthChecks(r.NoncachedClient, r.Log); err != nil {
 		r.Log.Info(fmt.Sprintf("health check failed: %s", err.Error()))
 		setSeedGenStatusInProgress(seedgen, fmt.Sprintf("%s: %s", msgWaitingForStable, err.Error()))
-		nextReconcile = requeueWithShortInterval()
-		return
+		return requeueWithShortInterval(), nil
 	}
 
 	r.Log.Info("Health check passed")
@@ -751,11 +750,9 @@ func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen
 		r.Log.Error(err, "failed to update seedgen CR status")
 	}
 
-	nextReconcile = doNotRequeue()
+	nextReconcile := doNotRequeue()
 	if err := r.setupWorkspace(); err != nil {
-		rc = err
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, err
 	}
 
 	// Pull the recertImage first, to avoid potential failures late in the seed image generation procedure
@@ -765,9 +762,7 @@ func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen
 	}
 
 	if err := r.pullRecertImagePullSpec(seedgen); err != nil {
-		rc = fmt.Errorf("failed to pull recert image: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed to pull recert image: %w", err)
 	}
 
 	setSeedGenStatusInProgress(seedgen, "Preparing for seed generation")
@@ -778,46 +773,34 @@ func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen
 	// Get the seedgen secret
 	seedGenSecret := &corev1.Secret{}
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: utils.SeedGenSecretName, Namespace: common.LcaNamespace}, seedGenSecret); err != nil {
-		rc = fmt.Errorf("could not access secret %s in %s: %w", utils.SeedGenSecretName, common.LcaNamespace, err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("could not access secret %s in %s: %w", utils.SeedGenSecretName, common.LcaNamespace, err)
 	}
 
 	// Save the seedgen secret CR in order to restore it after the imager is complete
 	if err := commonUtils.MarshalToFile(seedGenSecret, common.PathOutsideChroot(utils.SeedGenStoredSecretCR)); err != nil {
-		rc = fmt.Errorf("failed to write secret to %s: %w", utils.SeedGenStoredSecretCR, err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed to write secret to %s: %w", utils.SeedGenStoredSecretCR, err)
 	}
 
 	if seedAuth, exists := seedGenSecret.Data["seedAuth"]; exists {
 		if err := os.WriteFile(common.PathOutsideChroot(seedgenAuthFile), seedAuth, 0o600); err != nil {
-			rc = fmt.Errorf("failed to write %s: %w", seedgenAuthFile, err)
-			setSeedGenStatusFailed(seedgen, rc.Error())
-			return
+			return nextReconcile, fmt.Errorf("failed to write %s: %w", seedgenAuthFile, err)
 		}
 	} else {
-		rc = fmt.Errorf("could not find seedAuth in %s secret", utils.SeedGenSecretName)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("could not find seedAuth in %s secret", utils.SeedGenSecretName)
 	}
 
 	if hubKubeconfig, exists := seedGenSecret.Data["hubKubeconfig"]; exists {
 		// Create client for access to hub
 		hubClient, err := r.createHubClient(hubKubeconfig)
 		if err != nil {
-			rc = fmt.Errorf("failed to create hub client: %w", err)
-			setSeedGenStatusFailed(seedgen, rc.Error())
-			return
+			return nextReconcile, fmt.Errorf("failed to create hub client: %w", err)
 		}
 
 		if r.managedClusterExists(ctx, hubClient, clusterName) {
 			// Save the ACM resources from hub needed for re-import
 			r.Log.Info("Collecting ACM import data")
 			if err := r.deregisterFromHub(ctx, hubClient, clusterName); err != nil {
-				rc = fmt.Errorf("failed to deregister from hub: %w", err)
-				setSeedGenStatusFailed(seedgen, rc.Error())
-				return
+				return nextReconcile, fmt.Errorf("failed to deregister from hub: %w", err)
 			}
 
 			// In the success case, the pod will block until terminated by the imager container.
@@ -834,16 +817,12 @@ func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen
 	// Get the cluster's pull-secret
 	originalPullSecretData, err := lcautils.GetSecretData(ctx, common.PullSecretName, common.OpenshiftConfigNamespace, corev1.DockerConfigJsonKey, r.Client)
 	if err != nil {
-		rc = fmt.Errorf("could not access pull-secret %s in %s: %w", common.PullSecretName, common.OpenshiftConfigNamespace, err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("could not access pull-secret %s in %s: %w", common.PullSecretName, common.OpenshiftConfigNamespace, err)
 	}
 
 	// Save the cluster's pull-secret in order to restore it after the imager is complete
 	if err := os.WriteFile(common.PathOutsideChroot(utils.StoredPullSecret), []byte(originalPullSecretData), 0o600); err != nil {
-		rc = fmt.Errorf("failed to write pull-secret to %s: %w", utils.StoredPullSecret, err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed to write pull-secret to %s: %w", utils.StoredPullSecret, err)
 	}
 
 	setSeedGenStatusInProgress(seedgen, "Cleaning cluster resources")
@@ -854,30 +833,22 @@ func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen
 	// Clean up cluster resources
 	r.Log.Info("Cleaning cluster resources")
 	if err := r.cleanupClusterResources(ctx); err != nil {
-		rc = fmt.Errorf("failed to cleanup resources: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed to cleanup resources: %w", err)
 	}
 
 	// TODO: Can this be done cleanly via client? The client.DeleteAllOf seems to require a specified namespace, so maybe loop over the namespaces
 	r.Log.Info("Cleaning completed and failed pods")
 	kubeconfigArg := fmt.Sprintf("--kubeconfig=%s", common.KubeconfigFile)
 	if _, err := r.Executor.Execute("oc", "delete", "pod", kubeconfigArg, "--field-selector=status.phase==Succeeded", "--all-namespaces"); err != nil {
-		rc = fmt.Errorf("failed to cleanup Succeeded pods: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed to cleanup Succeeded pods: %w", err)
 	}
 	if _, err := r.Executor.Execute("oc", "delete", "pod", kubeconfigArg, "--field-selector=status.phase==Failed", "--all-namespaces"); err != nil {
-		rc = fmt.Errorf("failed to cleanup Failed pods: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed to cleanup Failed pods: %w", err)
 	}
 
 	r.Log.Info("Sanitize cluster's pull-secret from sensitive data")
 	if err := r.waitForPullSecretOverride(ctx, []byte(common.PullSecretEmptyData)); err != nil {
-		rc = fmt.Errorf("failed sanitizing cluster's pull-secret: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed sanitizing cluster's pull-secret: %w", err)
 	}
 	// In the success case, the pod will block until terminated by the imager container.
 	// Create a deferred function to restore the secret CR in the case where a failure happens
@@ -885,9 +856,7 @@ func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen
 	defer r.waitForPullSecretOverride(ctx, []byte(originalPullSecretData))
 
 	if err := r.cleanupOldRenderedMachineConfigs(ctx); err != nil {
-		rc = fmt.Errorf("failed to cleanup old machine configs, err: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed to cleanup old machine configs, err: %w", err)
 	}
 
 	// Final stage of initial seed generation is to delete the CR and launch the container.
@@ -899,16 +868,12 @@ func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen
 
 	// Save the seedgen CR in order to restore it after the imager is complete
 	if err := commonUtils.MarshalToFile(seedgen, common.PathOutsideChroot(utils.SeedGenStoredCR)); err != nil {
-		rc = fmt.Errorf("failed to write CR to %s: %w", utils.SeedGenStoredCR, err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed to write CR to %s: %w", utils.SeedGenStoredCR, err)
 	}
 
 	r.Log.Info("Deleting seedgen secret CR")
 	if err := r.Client.Delete(ctx, seedGenSecret); err != nil {
-		rc = fmt.Errorf("unable to delete seedgen secret CR: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("unable to delete seedgen secret CR: %w", err)
 	}
 	// In the success case, the pod will block until terminated by the imager container.
 	// Create a deferred function to restore the secret CR in the case where a failure happens
@@ -917,9 +882,7 @@ func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen
 
 	r.Log.Info("Deleting seedgen CR")
 	if err := r.Client.Delete(ctx, seedgen); err != nil {
-		rc = fmt.Errorf("unable to delete seedgen CR: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("unable to delete seedgen CR: %w", err)
 	}
 	// In the success case, the pod will block until terminated by the imager container.
 	// Create a deferred function to restore the seedgen CR in the case where a failure happens
@@ -932,21 +895,15 @@ func (r *SeedGeneratorReconciler) generateSeedImage(ctx context.Context, seedgen
 			Name: utils.IBUName,
 		}}
 	if err := r.Client.Delete(ctx, ibu); client.IgnoreNotFound(err) != nil {
-		rc = fmt.Errorf("failed to delete IBU CR: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("failed to delete IBU CR: %w", err)
 	}
 
 	if err := r.launchImager(seedgen); err != nil {
-		rc = fmt.Errorf("imager failed: %w", err)
-		setSeedGenStatusFailed(seedgen, rc.Error())
-		return
+		return nextReconcile, fmt.Errorf("imager failed: %w", err)
 	}
 
 	// If we've gotten this far, something has gone wrong
-	rc = fmt.Errorf("unexpected return from launching imager container")
-	setSeedGenStatusFailed(seedgen, rc.Error())
-	return
+	return nextReconcile, fmt.Errorf("unexpected return from launching imager container")
 }
 
 func (r *SeedGeneratorReconciler) restoreManagedCluster(ctx context.Context, clusterName string) error {
@@ -1081,7 +1038,9 @@ func (r *SeedGeneratorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		nextReconcile = requeueImmediately()
 	case phases.PhaseGenerating:
 		r.Log.Info(fmt.Sprintf("Generating seed image: %s", seedgen.Spec.SeedImage))
+
 		if nextReconcile, err = r.generateSeedImage(ctx, seedgen, clusterName); err != nil {
+			setSeedGenStatusFailed(seedgen, err.Error())
 			_ = r.wipeExistingWorkspace()
 
 			// CR Status will have been updated by generateSeedImage, so just log the failure
