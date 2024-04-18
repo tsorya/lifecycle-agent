@@ -41,6 +41,7 @@ var (
 	pullSecretFile     string
 	precacheBestEffort bool
 	precacheDisabled   bool
+	skipShutdown       bool
 )
 
 func init() {
@@ -54,6 +55,8 @@ func init() {
 	ibi.Flags().StringVarP(&pullSecretFile, "pullSecretFile", "p", "", "The path to the pull secret file for precache process.")
 	ibi.Flags().BoolVarP(&precacheBestEffort, "precache-best-effort", "", false, "Set image precache to best effort mode")
 	ibi.Flags().BoolVarP(&precacheDisabled, "precache-disabled", "", false, "Disable precaching, no image precaching will run")
+	ibi.Flags().BoolVarP(&skipShutdown, "skip-shutdown", "", false, "Skip shutdown of the host after the preparation process is done. Useful for debugging.")
+
 	ibi.MarkFlagRequired("seed-image")
 	ibi.MarkFlagRequired("seed-version")
 	ibi.MarkFlagRequired("authfile")
@@ -67,7 +70,7 @@ func runIBI() {
 	ostreeClient := ostreeclient.NewClient(hostCommandsExecutor, true)
 
 	ibiRunner := ibipreparation.NewIBIPrepare(log, ops.NewOps(log, hostCommandsExecutor), rpmOstreeClient, ostreeClient,
-		seedImage, authFile, pullSecretFile, seedVersion, precacheBestEffort, precacheDisabled)
+		seedImage, authFile, pullSecretFile, seedVersion, precacheBestEffort, precacheDisabled, skipShutdown)
 	if err := ibiRunner.Run(); err != nil {
 		log.Fatal(err)
 	}
