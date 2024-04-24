@@ -8,6 +8,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/k8snetworkplumbingwg/sriov-network-operator v1.2.0
 	github.com/openshift/api v0.0.0-20231123212421-7955d3da79e8
+	github.com/openshift/assisted-installer/shared_ops v0.0.0
 	github.com/openshift/library-go v0.0.0-20231027143522-b8cd45d2d2c8
 	github.com/operator-framework/api v0.17.6
 	github.com/otiai10/copy v1.14.0
@@ -125,6 +126,9 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 )
 
-replace k8s.io/client-go => k8s.io/client-go v0.28.2
+replace (
+	github.com/openshift/assisted-installer/shared_ops => github.com/tsorya/assisted-installer/shared_ops v0.0.0-20240424114649-19b8cf518349
+	k8s.io/client-go => k8s.io/client-go v0.28.2
+)
 
 //replace github.com/vmware-tanzu/velero => github.com/openshift/velero v0.10.2-0.20231002153713-b470b0211e1f

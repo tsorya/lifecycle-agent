@@ -36,12 +36,17 @@ var ibi = &cobra.Command{
 }
 
 var (
-	seedImage          string
-	seedVersion        string
-	pullSecretFile     string
-	precacheBestEffort bool
-	precacheDisabled   bool
-	skipShutdown       bool
+	seedImage            string
+	seedVersion          string
+	pullSecretFile       string
+	precacheBestEffort   bool
+	precacheDisabled     bool
+	skipShutdown         bool
+	extraPartitionNumber int
+	extraPartitionStart  string
+	extraPartitionLabel  string
+	createExtraPartition bool
+	installationDisk     string
 )
 
 func init() {
@@ -56,6 +61,11 @@ func init() {
 	ibi.Flags().BoolVarP(&precacheBestEffort, "precache-best-effort", "", false, "Set image precache to best effort mode")
 	ibi.Flags().BoolVarP(&precacheDisabled, "precache-disabled", "", false, "Disable precaching, no image precaching will run")
 	ibi.Flags().BoolVarP(&skipShutdown, "skip-shutdown", "", false, "Skip shutdown of the host after the preparation process is done. Useful for debugging.")
+	ibi.Flags().StringVarP(&installationDisk, "installation-disk", "", "", "The disk to install the image on.")
+	ibi.Flags().IntVarP(&extraPartitionNumber, "extra-partition-number", "", 5, "The number of the extra partition to create.")
+	ibi.Flags().StringVarP(&extraPartitionStart, "extra-partition-start", "", "40G", "The start of the extra partition to create.")
+	ibi.Flags().StringVarP(&extraPartitionLabel, "extra-partition-label", "", "varlibcontainers", "The label of the extra partition to create.")
+	ibi.Flags().BoolVarP(&createExtraPartition, "create-extra-partition", "", true, "Create an extra partition on the installation disk.")
 
 	ibi.MarkFlagRequired("seed-image")
 	ibi.MarkFlagRequired("seed-version")
@@ -70,7 +80,9 @@ func runIBI() {
 	ostreeClient := ostreeclient.NewClient(hostCommandsExecutor, true)
 
 	ibiRunner := ibipreparation.NewIBIPrepare(log, ops.NewOps(log, hostCommandsExecutor), rpmOstreeClient, ostreeClient,
-		seedImage, authFile, pullSecretFile, seedVersion, precacheBestEffort, precacheDisabled, skipShutdown)
+		hostCommandsExecutor, seedImage, authFile, pullSecretFile, seedVersion,
+		installationDisk, extraPartitionLabel, extraPartitionStart,
+		precacheBestEffort, precacheDisabled, skipShutdown, createExtraPartition, extraPartitionNumber)
 	if err := ibiRunner.Run(); err != nil {
 		log.Fatal(err)
 	}

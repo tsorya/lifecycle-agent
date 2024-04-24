@@ -29,6 +29,7 @@ type Ops interface {
 	SystemctlAction(action string, args ...string) (string, error)
 	RunInHostNamespace(command string, args ...string) (string, error)
 	RunBashInHostNamespace(command string, args ...string) (string, error)
+	RunListOfCommands(cmds []*CMD) error
 	ForceExpireSeedCrypto(recertContainerImage, authFile string, hasKubeAdminPassword bool) error
 	RestoreOriginalSeedCrypto(recertContainerImage, authFile string) error
 	RunUnauthenticatedEtcdServer(authFile, name string) error
@@ -45,6 +46,15 @@ type Ops interface {
 	Mount(deviceName, mountFolder string) error
 	Umount(deviceName string) error
 	Chroot(chrootPath string) (func() error, error)
+}
+
+type CMD struct {
+	command string
+	args    []string
+}
+
+func NewCMD(command string, args ...string) *CMD {
+	return &CMD{command: command, args: args}
 }
 
 type BlockDevice struct {
@@ -441,4 +451,13 @@ func (o *ops) Chroot(chrootPath string) (func() error, error) {
 		}
 		return nil
 	}, nil
+}
+
+func (o *ops) RunListOfCommands(cmds []*CMD) error {
+	for _, c := range cmds {
+		if _, err := o.hostCommandsExecutor.Execute(c.command, c.args...); err != nil {
+			return fmt.Errorf("failed to run %s with args %s: %w", c.command, c.args, err)
+		}
+	}
+	return nil
 }
