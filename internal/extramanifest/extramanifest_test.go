@@ -291,7 +291,7 @@ func TestValidateExtraManifestConfigmaps(t *testing.T) {
 				}
 			}
 
-			err := handler.ValidateExtraManifestConfigmaps(context.Background(), tc.configmaps, &lcav1alpha1.ImageBasedUpgrade{})
+			err := handler.ValidateExtraManifestConfigmaps(context.Background(), tc.configmaps)
 			assert.ErrorContains(t, err, tc.expectedErr.Error())
 		})
 	}

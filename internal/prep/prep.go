@@ -250,7 +250,6 @@ func SetupStateroot(log logr.Logger, ops ops.Ops, ostreeClient ostreeclient.ICli
 		return fmt.Errorf("failed to copy image list file: %w", err)
 	}
 
-	log.Info("Stateroot setup done successfully")
 	return nil
 }
 

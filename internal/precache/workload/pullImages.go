@@ -37,12 +37,7 @@ const (
 	DefaultAuthFile string = "/var/lib/kubelet/config.json"
 )
 
-var (
-	logExec = &log.Logger{
-		Level: log.ErrorLevel, // reducing log level and only report if the exec calls fail
-	}
-	Executor = ops.NewRegularExecutor(logExec, false)
-)
+var Executor = ops.NewRegularExecutor(log.StandardLogger(), false)
 
 // CheckPodman verifies that podman is running by checking the version of podman
 func CheckPodman() bool {
@@ -58,7 +53,7 @@ func podmanImgPull(image, authFile string) error {
 	if authFile != "" {
 		args = append(args, []string{"--authfile", authFile}...)
 	}
-	if _, err := Executor.Execute("podman", args...); err != nil {
+	if _, err := Executor.ExecuteWithLiveLogger("podman", args...); err != nil {
 		return fmt.Errorf("failed podman pull with args %s: %w", args, err)
 	}
 	return nil
