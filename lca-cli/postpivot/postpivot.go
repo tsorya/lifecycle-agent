@@ -241,9 +241,10 @@ func (p *PostPivot) setProxyAndProxyStatus(seedReconfig *clusterconfig_api.SeedR
 		return fmt.Errorf("seedReconfig and seedClusterInfo proxy configuration mismatch")
 	}
 
-	if seedReconfig.Proxy == nil {
+	// if proxy is not set in seedReconfig, we don't need to set it
+	// if statusProxy is set, we assume that the proxy is already set in a right way (ibu backward compatibility)
+	if seedReconfig.Proxy == nil || seedReconfig.StatusProxy != nil {
 		return nil
-
 	}
 
 	set := sets.NewString(

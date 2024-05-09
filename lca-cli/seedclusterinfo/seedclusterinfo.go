@@ -87,6 +87,8 @@ func NewFromClusterInfo(clusterInfo *utils.ClusterInfo, seedImagePullSpec string
 		MirrorRegistryConfigured: clusterInfo.MirrorRegistryConfigured,
 		RecertImagePullSpec:      seedImagePullSpec,
 		HasProxy:                 hasProxy,
+		ClusterNetworks:          clusterInfo.ClusterNetworks,
+		ServiceNetworks:          clusterInfo.ServiceNetworks,
 	}
 }
 
