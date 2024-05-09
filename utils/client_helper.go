@@ -57,6 +57,27 @@ func GetClusterName(ctx context.Context, client runtimeclient.Client) (string, e
 	return installConfig.Metadata.Name, nil
 }
 
+// currently we support providing only one machine network
+func getMachineNetworkForNodeIp(ctx context.Context, client runtimeclient.Client, nodeIp string) (string, error) {
+	installConfig, err := getInstallConfig(ctx, client)
+	if err != nil {
+		return "", fmt.Errorf("failed to get install config: %w", err)
+	}
+
+	for _, machineNetwork := range installConfig.Networking.MachineNetwork {
+		partOfCidr, err := IpInCidr(nodeIp, machineNetwork.CIDR)
+		if err != nil {
+			return "", fmt.Errorf("failed to check if IP is in CIDR: %w", err)
+		}
+
+		if partOfCidr {
+			return machineNetwork.CIDR, nil
+		}
+	}
+
+	return "", fmt.Errorf("failed to find machine network for node IP %s", nodeIp)
+}
+
 func GetClusterBaseDomain(ctx context.Context, client runtimeclient.Client) (string, error) {
 	installConfig, err := getInstallConfig(ctx, client)
 	if err != nil {
@@ -76,6 +97,7 @@ type ClusterInfo struct {
 	MirrorRegistryConfigured bool
 	ClusterNetworks          []string
 	ServiceNetworks          []string
+	MachineNetwork           string
 }
 
 func GetClusterInfo(ctx context.Context, client runtimeclient.Client) (*ClusterInfo, error) {
@@ -121,6 +143,11 @@ func GetClusterInfo(ctx context.Context, client runtimeclient.Client) (*ClusterI
 	if err != nil {
 		return nil, err
 	}
+	machineNetwork, err := getMachineNetworkForNodeIp(ctx, client, ip)
+	if err != nil {
+		return nil, err
+	}
+
 	return &ClusterInfo{
 		ClusterName:              clusterName,
 		BaseDomain:               clusterBaseDomain,
@@ -132,6 +159,7 @@ func GetClusterInfo(ctx context.Context, client runtimeclient.Client) (*ClusterI
 		MirrorRegistryConfigured: len(mirrorRegistrySources) > 0,
 		ClusterNetworks:          clusterNetworks,
 		ServiceNetworks:          serviceNetworks,
+		MachineNetwork:           machineNetwork,
 	}, nil
 }
 
@@ -158,9 +186,18 @@ type installConfigMetadata struct {
 	Name string `json:"name"`
 }
 
+type machineNetworkEntry struct {
+	// CIDR is the IP block address pool for machines within the cluster.
+	CIDR string `json:"cidr"`
+}
+
 type basicInstallConfig struct {
 	BaseDomain string                `json:"baseDomain"`
 	Metadata   installConfigMetadata `json:"metadata"`
+	Networking struct {
+		MachineCIDR    string                `json:"machineCIDR"`
+		MachineNetwork []machineNetworkEntry `json:"machineNetwork,omitempty"`
+	} `json:"networking"`
 }
 
 func getInstallConfig(ctx context.Context, client runtimeclient.Client) (*basicInstallConfig, error) {

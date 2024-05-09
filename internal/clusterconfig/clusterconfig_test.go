@@ -88,7 +88,7 @@ var (
 		},
 		Status: corev1.NodeStatus{
 			Addresses: []corev1.NodeAddress{
-				{Type: corev1.NodeInternalIP, Address: "192.168.121.10"},
+				{Type: corev1.NodeInternalIP, Address: "192.168.127.10"},
 				{Type: corev1.NodeHostName, Address: "seed"},
 			},
 		},
@@ -296,7 +296,7 @@ func TestClusterConfig(t *testing.T) {
 				assert.Equal(t, "ssh-key", seedReconfig.SSHKey)
 				assert.Equal(t, "test-infra-cluster", seedReconfig.ClusterName)
 				assert.Equal(t, "redhat.com", seedReconfig.BaseDomain)
-				assert.Equal(t, "192.168.121.10", seedReconfig.NodeIP)
+				assert.Equal(t, "192.168.127.10", seedReconfig.NodeIP)
 				assert.Equal(t, "mirror.redhat.com:5005", seedReconfig.ReleaseRegistry)
 				assert.Equal(t, "some-http-proxy", seedReconfig.Proxy.HTTPProxy)
 				assert.Equal(t, "some-http-proxy-status", seedReconfig.StatusProxy.HTTPProxy)

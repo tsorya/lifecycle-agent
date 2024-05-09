@@ -459,3 +459,15 @@ func LoadGroupedManifestsFromPath(basePath string, log *logr.Logger) ([][]*unstr
 
 	return sortedManifests, nil
 }
+
+func IpInCidr(ipAddr, cidr string) (bool, error) {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse CIDR: %w", err)
+	}
+	ip := net.ParseIP(ipAddr)
+	if ip == nil {
+		return false, fmt.Errorf("failed to parse IP address: %s", ipAddr)
+	}
+	return ipNet.Contains(ip), nil
+}
