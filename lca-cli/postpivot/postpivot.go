@@ -866,20 +866,7 @@ func (p *PostPivot) networkConfiguration(ctx context.Context, seedReconfiguratio
 		return err
 	}
 
-	if err := p.setNodeIpHint(seedReconfiguration.MachineNetwork); err != nil {
-		return err
-	}
-
-	if err := p.setNodeIPIfNotProvided(ctx, seedReconfiguration, nodeIpFile); err != nil {
-		return err
-	}
-
 	if err := p.setDnsMasqConfiguration(seedReconfiguration, dnsmasqOverrides); err != nil {
-		return err
-	}
-
-	seedReconfiguration.Hostname, err = p.setHostname(seedReconfiguration.Hostname)
-	if err != nil {
 		return err
 	}
 
@@ -889,6 +876,19 @@ func (p *PostPivot) networkConfiguration(ctx context.Context, seedReconfiguratio
 
 	if _, err := p.ops.SystemctlAction("restart", dnsmasqService); err != nil {
 		return fmt.Errorf("failed to restart dnsmasq service, err %w", err)
+	}
+
+	seedReconfiguration.Hostname, err = p.setHostname(seedReconfiguration.Hostname)
+	if err != nil {
+		return err
+	}
+
+	if err := p.setNodeIpHint(seedReconfiguration.MachineNetwork); err != nil {
+		return err
+	}
+
+	if err := p.setNodeIPIfNotProvided(ctx, seedReconfiguration, nodeIpFile); err != nil {
+		return err
 	}
 
 	return nil
