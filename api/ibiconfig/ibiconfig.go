@@ -17,7 +17,8 @@ import (
 const ImageBasedInstallConfigVersion = "v1beta1"
 
 const (
-	defaultExtraPartitionLabel = "varlibcontainers"
+	VarLibContainers           = "/var/lib/containers"
+	DefaultExtraPartitionLabel = "varlibcontainers"
 	sshPublicKeyRegex          = "^(ssh-rsa AAAAB3NzaC1yc2|ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNT|ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzOD|ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1Mj|ssh-ed25519 AAAAC3NzaC1lZDI1NTE5|ssh-dss AAAAB3NzaC1kc3)[0-9A-Za-z+/]+[=]{0,3}( .*)?$"
 )
 
@@ -114,10 +115,31 @@ type IBIPrepareConfig struct {
 	// +optional
 	ExtraPartitionNumber uint `json:"extraPartitionNumber,omitempty"`
 
+	// ExtraPartitions allows to create extra partitions while writing installation iso to disk
+	// This field is coming in order to expand ExtraPartition functionality and allow to create
+	// more than one extra partition, though /var/lib/containers should be still part of it
+	// Default: {"device": <installation disk>, "partitions": ["startInGB": ""]}
+	// +optional
+	ExtraPartitions []ExtraPartition `json:"extraPartitions,omitempty"`
+
 	// SkipDiskCleanup is a flag to skip disk cleanup before installation.
 	// As part of installation we will try to format the disk this flag will skip that step.
 	// Default is false
 	SkipDiskCleanup bool `json:"skipDiskCleanup,omitempty"`
+}
+
+type ExtraPartition struct {
+	Device     string      `json:"device"`
+	Partitions []Partition `json:"partitions"`
+}
+
+type Partition struct {
+	Label string `json:"label,omitempty"`
+	// in case start will be set to 0 or not provided
+	// partition of requested size will be added to the end of free space
+	StartInGB uint `json:"startInGB,omitempty"`
+	SizeInGB  uint `json:"sizeInGB"`
+	Number    uint `json:"number"`
 }
 
 type ImageDigestSource struct {
@@ -218,17 +240,40 @@ func (c *IBIPrepareConfig) Validate() error {
 		return fmt.Errorf("installationDisk is required")
 	}
 
+	return c.validateExtraPartitions()
+}
+
+func (c *IBIPrepareConfig) validateExtraPartitions() error {
+	if len(c.ExtraPartitions) > 0 && !c.UseContainersFolder {
+		return nil
+	}
+	foundVarLibContainers := false
+	for _, extraPartition := range c.ExtraPartitions {
+		if extraPartition.Device == c.InstallationDisk {
+			for _, partition := range extraPartition.Partitions {
+				if partition.Label == DefaultExtraPartitionLabel {
+					foundVarLibContainers = true
+				}
+			}
+		}
+	}
+	if !foundVarLibContainers {
+		return fmt.Errorf("partition with label %s on installation disk must be provided", DefaultExtraPartitionLabel)
+	}
 	return nil
 }
 
 func (c *IBIPrepareConfig) SetDefaultValues() {
-	if c.ExtraPartitionStart == "" {
-		c.ExtraPartitionStart = "-40G"
-	}
-	if c.ExtraPartitionNumber == 0 {
-		c.ExtraPartitionNumber = 5
-	}
-	if c.ExtraPartitionLabel == "" {
-		c.ExtraPartitionLabel = defaultExtraPartitionLabel
+	if len(c.ExtraPartitions) == 0 {
+		c.ExtraPartitions = []ExtraPartition{{
+			Device: c.InstallationDisk,
+			Partitions: []Partition{
+				{
+					Number:   5,
+					SizeInGB: 40,
+					Label:    DefaultExtraPartitionLabel,
+				},
+			},
+		}}
 	}
 }

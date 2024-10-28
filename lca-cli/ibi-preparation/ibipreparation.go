@@ -162,6 +162,10 @@ func (i *IBIPrepare) diskPreparation() error {
 		if err := i.ops.SetupContainersFolderCommands(); err != nil {
 			return fmt.Errorf("failed to setup containers folder: %w", err)
 		}
+	} else if i.config.ExtraPartitions != nil && len(i.config.ExtraPartitions) > 0 {
+		if err := i.ops.CreateExtraPartitions(i.config.InstallationDisk, i.config.ExtraPartitions); err != nil {
+			return fmt.Errorf("failed to create partitions: %w", err)
+		}
 	} else {
 		if err := i.ops.CreateExtraPartition(i.config.InstallationDisk, i.config.ExtraPartitionLabel,
 			i.config.ExtraPartitionStart, i.config.ExtraPartitionNumber); err != nil {

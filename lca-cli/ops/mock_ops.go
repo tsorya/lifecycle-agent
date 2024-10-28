@@ -11,6 +11,7 @@ package ops
 import (
 	reflect "reflect"
 
+	ibiconfig "github.com/openshift-kni/lifecycle-agent/api/ibiconfig"
 	logrus "github.com/sirupsen/logrus"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -65,6 +66,20 @@ func (m *MockOps) CreateExtraPartition(installationDisk, extraPartitionLabel, ex
 func (mr *MockOpsMockRecorder) CreateExtraPartition(installationDisk, extraPartitionLabel, extraPartitionStart, extraPartitionNumber any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateExtraPartition", reflect.TypeOf((*MockOps)(nil).CreateExtraPartition), installationDisk, extraPartitionLabel, extraPartitionStart, extraPartitionNumber)
+}
+
+// CreateExtraPartitions mocks base method.
+func (m *MockOps) CreateExtraPartitions(installationDisk string, extraPartitions []ibiconfig.ExtraPartition) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateExtraPartitions", installationDisk, extraPartitions)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateExtraPartitions indicates an expected call of CreateExtraPartitions.
+func (mr *MockOpsMockRecorder) CreateExtraPartitions(installationDisk, extraPartitions any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateExtraPartitions", reflect.TypeOf((*MockOps)(nil).CreateExtraPartitions), installationDisk, extraPartitions)
 }
 
 // CreateIsoWithEmbeddedIgnition mocks base method.

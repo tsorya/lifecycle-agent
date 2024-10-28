@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openshift-kni/lifecycle-agent/api/ibiconfig"
 	"io"
 	"net/http"
 	"os"
@@ -51,6 +52,7 @@ type Ops interface {
 	Umount(deviceName string) error
 	Chroot(chrootPath string) (func() error, error)
 	CreateExtraPartition(installationDisk, extraPartitionLabel, extraPartitionStart string, extraPartitionNumber uint) error
+	CreateExtraPartitions(installationDisk string, extraPartitions []ibiconfig.ExtraPartition) error
 	SetupContainersFolderCommands() error
 	GetHostname() (string, error)
 	CreateIsoWithEmbeddedIgnition(log logrus.FieldLogger, ignitionBytes []byte, baseIsoPath, outputIsoPath string) error
@@ -501,6 +503,49 @@ func (o *ops) CreateExtraPartition(installationDisk, extraPartitionLabel, extraP
 	cmds = append(cmds, NewCMD("mount",
 		fmt.Sprintf("/dev/disk/by-partlabel/%s", extraPartitionLabel), common.ContainerStoragePath),
 		NewCMD("restorecon", "-R", common.ContainerStoragePath))
+	if err := o.RunListOfCommands(cmds); err != nil {
+		return fmt.Errorf("failed to grow root partition: %w", err)
+	}
+
+	return nil
+}
+
+func (o *ops) CreateExtraPartitions(installationDisk string, extraPartitions []ibiconfig.ExtraPartition) error {
+	o.log.Info("Creating extra partitions")
+	var cmds []*CMD
+
+	for _, extraPartition := range extraPartitions {
+		if _, err := o.RunBashInHostNamespace(
+			"echo", "write", "|", "sfdisk", extraPartition.Device); err != nil {
+			return fmt.Errorf("failed to create extra partition: %w", err)
+		}
+		for _, partition := range extraPartition.Partitions {
+			params := fmt.Sprintf("%d:%dG:+%dG", partition.Number, partition.StartInGB, partition.SizeInGB)
+			// in case partition start was set to 0 we will add it to the end of free space
+			if partition.StartInGB == 0 {
+				params = fmt.Sprintf("%d:-%dG", partition.Number, partition.SizeInGB)
+			}
+
+			if _, err := o.RunInHostNamespace("sgdisk", "--new", params,
+				"--change-name", fmt.Sprintf("%d:%s", partition.Number, partition.Label),
+				installationDisk); err != nil {
+				return fmt.Errorf("failed to create extra partition: %w", err)
+			}
+
+			partitionPath, err := o.RunBashInHostNamespace("lsblk", extraPartition.Device, "--json", "-O", "|", "jq",
+				fmt.Sprintf(".blockdevices[0].children[%d].path", partition.Number-1), "-r")
+			if err != nil {
+				return fmt.Errorf("failed to get extra partition path: %w", err)
+			}
+			cmds = append(cmds, NewCMD("mkfs.xfs", "-f", partitionPath))
+		}
+	}
+
+	cmds = append(cmds, o.growRootPartitionCommands(installationDisk)...)
+	cmds = append(cmds, NewCMD("mount",
+		fmt.Sprintf("/dev/disk/by-partlabel/%s", ibiconfig.DefaultExtraPartitionLabel), common.ContainerStoragePath),
+		NewCMD("restorecon", "-R", common.ContainerStoragePath))
+
 	if err := o.RunListOfCommands(cmds); err != nil {
 		return fmt.Errorf("failed to grow root partition: %w", err)
 	}
