@@ -599,13 +599,6 @@ func (r *SeedGeneratorReconciler) validateSystem(ctx context.Context) (msg strin
 		return
 	}
 
-	// TODO: Remove this dnsmasq check once ACM includes it? Or should we just keep it regardless, for dev systems not installed via ACM?
-	dnsmasqConfigScript := "/usr/local/bin/dnsmasq_config.sh"
-	if _, err := os.Stat(common.PathOutsideChroot(dnsmasqConfigScript)); os.IsNotExist(err) {
-		msg = "Rejected due to system missing dnsmasq config required for IBU"
-		return
-	}
-
 	// Ensure cluster's pull-secret is not sanitized
 	dockerConfigJSON, _ := os.ReadFile(filepath.Join(common.Host, common.ImageRegistryAuthFile))
 	if strings.TrimSpace(string(dockerConfigJSON)) == strings.TrimSpace(common.PullSecretEmptyData) {
