@@ -474,6 +474,7 @@ func (r *SeedGeneratorReconciler) launchImager(seedgen *seedgenv1.SeedGenerator)
 		// explicitly to emphasize that we depend on it for the seed image
 		// generator to have network access in proxy-only environments
 		"--http-proxy=true",
+		"-e", "NODE_NAME=$(hostname)",
 		"-v", "/etc:/etc", "-v", "/var:/var", "-v", "/var/run:/var/run", "-v", "/run/systemd/journal/socket:/run/systemd/journal/socket",
 		"-v", fmt.Sprintf("%s:%s", seedgenAuthFile, seedgenAuthFile),
 		"--entrypoint", "lca-cli",
@@ -592,6 +593,8 @@ func (r *SeedGeneratorReconciler) validateSystem(ctx context.Context) (msg strin
 		}
 		return
 	}
+
+	r.Log.Info("This image without dnsmasq")
 
 	// Ensure there are no ACM addons enabled on the seed SNO
 	if acmNsList := r.currentAcmAddonNamespaces(ctx); len(acmNsList) > 0 {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"k8s.io/apimachinery/pkg/types"
 	"net"
 	"os"
 	"path"
@@ -75,7 +76,23 @@ func RenderTemplate(templateData string, params any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func GetNode(ctx context.Context, client runtimeclient.Client, nodeName string) (*corev1.Node, error) {
+	node := &corev1.Node{}
+	err := client.Get(ctx, types.NamespacedName{Name: nodeName}, node)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node %s: %w", nodeName, err)
+	}
+
+	return node, nil
+}
+
 func GetSNOMasterNode(ctx context.Context, client runtimeclient.Client) (*corev1.Node, error) {
+	// In case nodeName was set we should return specific node
+	nodeName := os.Getenv("NODE_NAME")
+	if nodeName != "" {
+		return GetNode(ctx, client, nodeName)
+	}
+
 	nodesList := &corev1.NodeList{}
 	err := client.List(ctx, nodesList, &runtimeclient.ListOptions{LabelSelector: labels.SelectorFromSet(
 		labels.Set{
